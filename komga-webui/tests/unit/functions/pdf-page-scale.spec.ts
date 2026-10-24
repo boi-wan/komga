@@ -57,3 +57,14 @@ describe('Continuous reader', () => {
     expect(pdfPageScale(page, portraitArea, ContinuousScaleType.ORIGINAL)).toEqual(1)
   })
 })
+
+describe('Rounding', () => {
+  test('given any area width when fitting width then the page drawn by pdf.js, which rounds down, is as wide as the area', () => {
+    // US Letter is 612 pt wide: pdf.js multiplies the scale by 96/72 and by the width in pt
+    const letter = {width: 816, height: 1056}
+    for (let width = 200; width <= 3000; width++) {
+      const scale = pdfPageScale(letter, {width, height: 900}, ContinuousScaleType.WIDTH)
+      expect(Math.floor(scale * 96 / 72 * 612)).toEqual(width)
+    }
+  })
+})

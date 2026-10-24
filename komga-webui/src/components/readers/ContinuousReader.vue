@@ -3,16 +3,34 @@
     <div :class="`d-flex flex-column px-0 mx-0` "
          v-scroll="onScroll"
     >
-      <img v-for="(page, i) in pages"
-           :key="`page${i}`"
-           :alt="`Page ${page.number}`"
-           :src="shouldLoad(i) ? page.url : undefined"
-           :height="calcHeight(page)"
-           :width="calcWidth(page)"
-           :id="`page${page.number}`"
-           :style="`margin: ${i === 0 ? 0 : pageMargin}px auto;`"
-           v-intersect="onIntersect"
-      />
+      <template v-for="(page, i) in pages">
+        <!--  the box of a PDF page is sized here, before PdfPage is loaded  -->
+        <div v-if="page.pdfUrl"
+             :key="`page${i}`"
+             :id="`page${page.number}`"
+             :style="`margin: ${i === 0 ? 0 : pageMargin}px auto; ${pdfBoxStyle(page)}`"
+             v-intersect="onIntersect"
+        >
+          <pdf-page :page="page"
+                    :fit="scale"
+                    :width="fitWidth"
+                    :height="$vuetify.breakpoint.height"
+                    :active="Math.abs((currentPage - 1) - i) <= 2"
+                    :priority="Math.abs((currentPage - 1) - i)"
+                    @load="size => setPdfPageSize(page, size)"
+          />
+        </div>
+        <img v-else
+             :key="`page${i}`"
+             :alt="`Page ${page.number}`"
+             :src="shouldLoad(i) ? page.url : undefined"
+             :height="calcHeight(page)"
+             :width="calcWidth(page)"
+             :id="`page${page.number}`"
+             :style="`margin: ${i === 0 ? 0 : pageMargin}px auto;`"
+             v-intersect="onIntersect"
+        />
+      </template>
     </div>
 
     <!--  clickable zone: top  -->
@@ -40,15 +58,25 @@ import Vue from 'vue'
 import {ContinuousScaleType} from '@/types/enum-reader'
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {throttle} from 'lodash'
+import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
+
+// US Letter at scale 1, in CSS pixels: the size of PDF pages until one is loaded
+const PDF_PAGE_SIZE = {width: 816, height: 1056}
 
 export default Vue.extend({
   name: 'ContinuousReader',
+  components: {
+    // loaded on demand, with pdf.js
+    PdfPage: () => import(/* webpackChunkName: "pdf-page" */ './PdfPage.vue'),
+  },
   data: () => {
     return {
       offsetTop: 0,
       totalHeight: 1000,
       currentPage: 1,
       seen: [] as boolean[],
+      // size at scale 1 of the PDF pages loaded so far, in CSS pixels
+      pdfPageSizes: {} as Record<number, Size>,
     }
   },
   props: {
@@ -81,6 +109,7 @@ export default Vue.extend({
     pages: {
       handler(val) {
         this.seen = new Array(val.length).fill(false)
+        this.pdfPageSizes = {}
         if (this.page === 1) window.scrollTo(0, 0)
       },
       immediate: true,
@@ -122,6 +151,9 @@ export default Vue.extend({
     },
     totalSidePadding(): number {
       return this.sidePadding * 2
+    },
+    fitWidth(): number {
+      return this.$vuetify.breakpoint.width - (this.$vuetify.breakpoint.width * this.totalSidePadding) / 100
     },
   },
   methods: {
@@ -174,6 +206,37 @@ export default Vue.extend({
         default:
           return undefined
       }
+    },
+    setPdfPageSize(page: PageDtoWithUrl, size: Size) {
+      // the box of a page changes size once loaded: the page at the top of the screen stays in place,
+      // and becomes the current page if the current one is pushed off the screen
+      const anchor = [...this.$el.querySelectorAll('div[id^=page]')].find(e => e.getBoundingClientRect().bottom > 0)
+      const top = anchor?.getBoundingClientRect().top
+      this.$set(this.pdfPageSizes, page.number, size)
+      this.$nextTick(() => {
+        if (!anchor || top === undefined) return
+        const shift = anchor.getBoundingClientRect().top - top
+        if (shift) window.scrollBy(0, shift)
+        const current = document.getElementById(`page${this.currentPage}`)?.getBoundingClientRect()
+        if (current && (current.bottom <= 0 || current.top >= window.innerHeight)) {
+          this.currentPage = parseInt(anchor.id.replace('page', ''))
+          this.$emit('update:page', this.currentPage)
+        }
+      })
+    },
+    pdfBoxStyle(page: PageDtoWithUrl): string {
+      let size = this.pdfPageSizes[page.number]
+      if (!size) {
+        // until loaded, a page has the ratio of its server image, and the short side of the pages already loaded
+        size = Object.values(this.pdfPageSizes)[0] || PDF_PAGE_SIZE
+        if (page.width && page.height) {
+          const unit = Math.min(size.width, size.height) / Math.min(page.width, page.height)
+          size = {width: page.width * unit, height: page.height * unit}
+        }
+      }
+      const scale = pdfPageScale(size, {width: this.fitWidth, height: this.$vuetify.breakpoint.height}, this.scale)
+      // rounded down like the pages drawn by pdf.js
+      return `width: ${Math.floor(size.width * scale)}px; height: ${Math.floor(size.height * scale)}px;`
     },
     centerClick() {
       this.$emit('menu')

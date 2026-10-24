@@ -96,8 +96,6 @@ declare module 'pdfjs-viewer' {
 
     draw(): Promise<void>
 
-    reset(): void
-
     destroy(): void
   }
 }

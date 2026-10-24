@@ -75,15 +75,12 @@ export default Vue.extend({
   },
   beforeDestroy() {
     this.unload()
-    this.pageView = undefined
     releasePdfWorker()
   },
   watch: {
     'page.pdfUrl'() {
       // the component is reused for another page, for instance when the page layout changes
       this.unload()
-      this.pageView?.div.remove()
-      this.pageView = undefined
       this.pageSize = undefined
       this.failed = false
       if (this.active) this.load()
@@ -94,7 +91,7 @@ export default Vue.extend({
     },
     scale(val, old) {
       // the first scale is applied by load(), and an unloaded page gets the current scale when loaded again
-      if (val && old && this.pageView && this.loadingTask) {
+      if (val && old && this.pageView) {
         this.pageView.update({scale: val})
         this.draw()
       }
@@ -114,26 +111,26 @@ export default Vue.extend({
       try {
         const {lib, viewer} = await loadPdfJs()
         const {loadingTask, pdfPage} = await loadPdfPage(this.page.pdfUrl!!, () => this.priority, loading.signal)
+        if (loading.signal.aborted) {
+          loadingTask.destroy()
+          return
+        }
         this.loadingTask = markRaw(loadingTask)
 
         const viewport = pdfPage.getViewport({scale: lib.PixelsPerInch.PDF_TO_CSS_UNITS})
         this.pageSize = {width: viewport.width, height: viewport.height}
+        this.$emit('load', this.pageSize)
 
-        if (this.pageView) {
-          this.pageView.setPdfPage(pdfPage)
-          this.pageView.update({scale: this.scale!!})
-        } else {
-          this.pageView = markRaw(new viewer.PDFPageView({
-            container: this.$refs.container as HTMLDivElement,
-            id: this.page.number,
-            scale: this.scale!!,
-            defaultViewport: viewport,
-            eventBus: new viewer.EventBus(),
-            annotationMode: lib.AnnotationMode.ENABLE,
-            maxCanvasPixels: MAX_CANVAS_PIXELS,
-          }))
-          this.pageView.setPdfPage(pdfPage)
-        }
+        this.pageView = markRaw(new viewer.PDFPageView({
+          container: this.$refs.container as HTMLDivElement,
+          id: this.page.number,
+          scale: this.scale!!,
+          defaultViewport: viewport,
+          eventBus: new viewer.EventBus(),
+          annotationMode: lib.AnnotationMode.ENABLE,
+          maxCanvasPixels: MAX_CANVAS_PIXELS,
+        }))
+        this.pageView.setPdfPage(pdfPage)
         await this.draw()
       } catch (e) {
         if (e?.name === 'AbortError') return
@@ -157,8 +154,10 @@ export default Vue.extend({
     unload() {
       this.loading?.abort()
       this.loading = undefined
-      // keeps the page element and its size, without the canvas
+      // a page view keeps its page and layers even when destroyed, so it is dropped (the reader keeps the size of the page)
       this.pageView?.destroy()
+      this.pageView?.div.remove()
+      this.pageView = undefined
       this.loadingTask?.destroy()
       this.loadingTask = undefined
     },
