@@ -31,8 +31,11 @@
               <pdf-page v-if="page.pdfUrl"
                         :key="`spread${i}-${j}`"
                         :page="page"
+                        :fit="scale"
                         :width="$vuetify.breakpoint.width / spread.length"
                         :height="$vuetify.breakpoint.height"
+                        :active="eagerLoad(i)"
+                        :priority="Math.abs(carouselPage - i)"
               />
               <img v-else
                    :alt="`Page ${page.number}`"

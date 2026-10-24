@@ -68,7 +68,17 @@ declare module 'pdfjs-viewer' {
   export class EventBus {
   }
 
+  export const RenderingStates: {
+    INITIAL: number,
+    RUNNING: number,
+    PAUSED: number,
+    FINISHED: number,
+  }
+
   export class PDFPageView {
+    div: HTMLDivElement
+    renderingState: number
+
     constructor(options: {
       container: HTMLElement,
       id: number,
