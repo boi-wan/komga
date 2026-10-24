@@ -27,13 +27,21 @@
       >
         <div class="full-height d-flex flex-column justify-center">
           <div :class="`d-flex flex-row${flipDirection ? '-reverse' : ''} justify-center px-0 mx-0`">
-            <img v-for="(page, j) in spread"
-                 :alt="`Page ${page.number}`"
-                 :key="`spread${i}-${j}`"
-                 :src="page.url"
-                 :class="imgClass(spread)"
-                 class="img-fit-all"
-            />
+            <template v-for="(page, j) in spread">
+              <pdf-page v-if="page.pdfUrl"
+                        :key="`spread${i}-${j}`"
+                        :page="page"
+                        :width="$vuetify.breakpoint.width / spread.length"
+                        :height="$vuetify.breakpoint.height"
+              />
+              <img v-else
+                   :alt="`Page ${page.number}`"
+                   :key="`spread${i}-${j}`"
+                   :src="page.url"
+                   :class="imgClass(spread)"
+                   class="img-fit-all"
+              />
+            </template>
           </div>
         </div>
       </v-carousel-item>
@@ -85,6 +93,10 @@ import {buildSpreads} from '@/functions/book-spreads'
 
 export default Vue.extend({
   name: 'PagedReader',
+  components: {
+    // loaded on demand, with pdf.js
+    PdfPage: () => import(/* webpackChunkName: "pdf-page" */ './PdfPage.vue'),
+  },
   data: function () {
     return {
       logger: 'PagedReader',

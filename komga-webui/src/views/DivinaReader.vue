@@ -323,10 +323,10 @@ import ThumbnailExplorerDialog from '@/components/dialogs/ThumbnailExplorerDialo
 import ShortcutHelpDialog from '@/components/dialogs/ShortcutHelpDialog.vue'
 import {getBookTitleCompact} from '@/functions/book-title'
 import {checkImageSupport, ImageFeature} from '@/functions/check-image'
-import {bookPageUrl} from '@/functions/urls'
+import {bookPageRawUrl, bookPageUrl} from '@/functions/urls'
 import {getFileFromUrl} from '@/functions/file'
 import {resizeImageFile} from '@/functions/resize-image'
-import {ReadingDirection} from '@/types/enum-books'
+import {MediaProfile, ReadingDirection} from '@/types/enum-books'
 import Vue from 'vue'
 import {Location} from 'vue-router'
 import PagedReader from '@/components/readers/PagedReader.vue'
@@ -706,6 +706,8 @@ export default Vue.extend({
 
       const pageDtos = (await this.$komgaBooks.getBookPages(bookId))
       pageDtos.forEach((p: any) => p['url'] = this.getPageUrl(p))
+      if (this.book.media.mediaProfile === MediaProfile.PDF)
+        pageDtos.forEach((p: any) => p['pdfUrl'] = bookPageRawUrl(bookId, p.number))
       this.pages = pageDtos as PageDtoWithUrl[]
 
       this.$debug('[setup]', `pages count:${this.pagesCount}`, 'read progress:', this.book.readProgress)
