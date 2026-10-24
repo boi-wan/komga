@@ -30,6 +30,7 @@
             <template v-for="(page, j) in spread">
               <pdf-page v-if="page.pdfUrl"
                         :key="`spread${i}-${j}`"
+                        class="pdf-page-fit"
                         :page="page"
                         :fit="scale"
                         :width="$vuetify.breakpoint.width / spread.length"
@@ -366,6 +367,13 @@ export default Vue.extend({
 .img-double-fit-width-shrink-only {
   max-width: 50vw;
   align-self: flex-start;
+}
+
+/* like the images, which are always as high as the screen and center their content */
+.pdf-page-fit {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
 }
 
 .img-fit-original {
