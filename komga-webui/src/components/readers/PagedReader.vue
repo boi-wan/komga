@@ -101,6 +101,7 @@ import {shortcutsLTR, shortcutsRTL, shortcutsVertical} from '@/functions/shortcu
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {buildSpreads} from '@/functions/book-spreads'
 import {asyncPdfPage} from '@/components/readers/async-pdf-page'
+import {sameBookPages} from '@/functions/reader-pages'
 
 export default Vue.extend({
   name: 'PagedReader',
@@ -151,9 +152,10 @@ export default Vue.extend({
   },
   watch: {
     pages: {
-      handler(val) {
+      handler(val, old) {
         this.spreads = buildSpreads(val, this.pageLayout)
-        this.failedPdfPages = {}
+        // the failures of a book are kept when the rendering of its PDF pages is turned off and on
+        if (!sameBookPages(val, old)) this.failedPdfPages = {}
       },
       immediate: true,
     },

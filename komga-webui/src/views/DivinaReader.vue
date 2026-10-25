@@ -361,6 +361,7 @@ import jsFileDownloader from 'js-file-downloader'
 import screenfull from 'screenfull'
 import {ItemTypes} from '@/types/items'
 import {getBookReadRouteFromMedia} from '@/functions/book-format'
+import {readerPages} from '@/functions/reader-pages'
 
 export default Vue.extend({
   name: 'DivinaReader',
@@ -513,7 +514,7 @@ export default Vue.extend({
     next()
   },
   watch: {
-    // e.g. the rendering of PDF pages turned off while selecting text
+    // text selection ends when no page has a text layer anymore, e.g. when the rendering of PDF pages is turned off
     canSelectText(val) {
       if (!val) this.textSelection = false
     },
@@ -581,10 +582,8 @@ export default Vue.extend({
     pdfBook(): boolean {
       return this.book.media?.mediaProfile === MediaProfile.PDF
     },
-    // the pages with a pdfUrl are drawn by pdf.js, the others are shown as images
     readerPages(): PageDtoWithUrl[] {
-      if (this.pdfClientRendering || !this.pdfBook) return this.pages
-      return this.pages.map(p => ({...p, pdfUrl: undefined}))
+      return readerPages(this.pages, this.pdfClientRendering)
     },
     // pages drawn by pdf.js have their text
     canSelectText(): boolean {

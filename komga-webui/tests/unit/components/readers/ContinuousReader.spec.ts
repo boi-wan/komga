@@ -11,13 +11,13 @@ const page = (n: number) => ({number: n, url: `/pages/${n}`, pdfUrl: `/pages/${n
 const pages = Array.from({length: 20}, (_, i) => page(i + 1))
 const PAGE_HEIGHT = 1035
 
-// fake layout: the page boxes are stacked from the top of the document, by the height of their style
+// fake layout: the pages are stacked from the top of the document, by the height of their style (PDF pages) or attribute (images)
 let scrollY = 0
 window.scrollBy = jest.fn((x: number, y: number) => scrollY += y) as any
 jest.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
   let top = -scrollY
   for (const box of document.querySelectorAll<HTMLElement>('[id^=page]')) {
-    const height = parseFloat(box.style.height) || 0
+    const height = parseFloat(box.style.height) || Number(box.getAttribute('height')) || 0
     if (box === this) return {top: top, bottom: top + height, height: height} as DOMRect
     top += height
   }
@@ -152,7 +152,7 @@ describe('Page sizes', () => {
     pdfPage(5).vm.$emit('load', {width: 816, height: 1300})
     await wrapper.vm.$nextTick()
 
-    await wrapper.setProps({pages: pages.map(p => ({...p}))})
+    await wrapper.setProps({pages: pages.map(p => ({...p, url: `/other-book${p.url}`}))})
 
     expect(boxHeight(5)).toEqual(PAGE_HEIGHT)
   })
@@ -168,5 +168,54 @@ describe('Failed PDF pages', () => {
 
     expect(wrapper.find('img#page10').attributes('src')).toEqual('/pages/10')
     expect(mountedPages()).toEqual([8, 9, 11, 12])
+  })
+})
+
+describe('PDF rendering turned off and on', () => {
+  const asImages = pages.map(p => ({...p, pdfUrl: undefined}))
+  const pageTop = (n: number) => document.getElementById(`page${n}`)!!.getBoundingClientRect().top
+
+  // at original scale, the PDF pages are 1055 pixels high, and their images 4141: the top of the screen is in the middle of page 5
+  async function scrolledToPage5AtOriginalScale() {
+    mountReader({page: 5, scale: ContinuousScaleType.ORIGINAL})
+    intersect(5, true)
+    jest.runAllTimers()
+    await wrapper.vm.$nextTick()
+    scrollY = pageTop(5) + 500
+  }
+
+  test('given PDF pages at original scale when shown as images then the page at the top stays in place, and stays the current page', async () => {
+    await scrolledToPage5AtOriginalScale()
+    const emitted = wrapper.emitted('update:page')!!.length
+
+    await wrapper.setProps({pages: asImages})
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('img#page5').exists()).toBe(true)
+    expect(pageTop(5)).toEqual(-500)
+    expect(wrapper.emitted('update:page')).toHaveLength(emitted)
+  })
+
+  test('given images when shown as PDF pages again then the page at the top stays in place', async () => {
+    await scrolledToPage5AtOriginalScale()
+    await wrapper.setProps({pages: asImages})
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({pages: pages})
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('div#page5').exists()).toBe(true)
+    expect(pageTop(5)).toEqual(-500)
+  })
+
+  test('given a PDF page pdf.js cannot draw when the rendering is turned off and on then it stays an image', async () => {
+    await scrolledToPage5AtOriginalScale()
+    pdfPage(5).vm.$emit('fail')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({pages: asImages})
+    await wrapper.setProps({pages: pages})
+
+    expect(wrapper.find('img#page5').exists()).toBe(true)
   })
 })

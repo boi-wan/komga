@@ -93,4 +93,27 @@ describe('PDF pages', () => {
     expect(wrapper.findAll('img').wrappers.map(i => i.attributes('src'))).toEqual(['/pages/1'])
     expect(wrapper.findAll('pdfpage-stub')).toHaveLength(4)
   })
+
+  test('given PDF pages when the rendering is turned off then they are shown as images, on the same page', async () => {
+    const wrapper = mountReader()
+    await wrapper.vm.$nextTick()
+    const emitted = wrapper.emitted('update:page')!!.length
+
+    await wrapper.setProps({pages: pages.map(p => ({...p, pdfUrl: undefined}))})
+
+    expect(wrapper.findAll('pdfpage-stub')).toHaveLength(0)
+    expect(wrapper.findAll('img')).toHaveLength(5)
+    expect(wrapper.emitted('update:page')).toHaveLength(emitted)
+  })
+
+  test('given a PDF page pdf.js cannot draw when the rendering is turned off and on then it stays an image', async () => {
+    const wrapper = mountReader()
+    wrapper.findAll('pdfpage-stub').at(0).vm.$emit('fail')
+    await wrapper.vm.$nextTick()
+
+    await wrapper.setProps({pages: pages.map(p => ({...p, pdfUrl: undefined}))})
+    await wrapper.setProps({pages: pages})
+
+    expect(wrapper.findAll('img').wrappers.map(i => i.attributes('src'))).toEqual(['/pages/1'])
+  })
 })

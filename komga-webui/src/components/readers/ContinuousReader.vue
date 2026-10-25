@@ -66,6 +66,7 @@ import {PageDtoWithUrl} from '@/types/komga-books'
 import {throttle} from 'lodash'
 import {estimatePdfPageSize, pdfPageBox, Size} from '@/functions/pdf-page-scale'
 import {asyncPdfPage} from '@/components/readers/async-pdf-page'
+import {sameBookPages} from '@/functions/reader-pages'
 
 const pageNumberOf = (pageElement: Element) => parseInt(pageElement.id.replace('page', ''))
 
@@ -123,10 +124,13 @@ export default Vue.extend({
   },
   watch: {
     pages: {
-      handler(val) {
-        this.seen = new Array(val.length).fill(false)
-        this.visiblePages = {}
-        this.visibilityChanges.clear()
+      handler(val, old) {
+        if (sameBookPages(val, old)) {
+          // the PDF pages switch between pdf.js and images, with other sizes: the page at the top of the screen stays in place
+          this.keepTopPageInPlace(() => this.forgetVisiblePages())
+          return
+        }
+        this.forgetVisiblePages()
         this.pdfPageSizes = {}
         this.pdfReferenceSize = undefined
         this.failedPdfPages = {}
@@ -221,6 +225,12 @@ export default Vue.extend({
       })
       this.visibilityChanges.clear()
     },
+    // the pages are rendered again, their observers report them again
+    forgetVisiblePages() {
+      this.seen = new Array(this.pages.length).fill(false)
+      this.visiblePages = {}
+      this.visibilityChanges.clear()
+    },
     setCurrentPage(page: number) {
       this.currentPage = page
       this.$emit('update:page', page)
@@ -263,7 +273,7 @@ export default Vue.extend({
         this.$set(this.pdfPageSizes, page.number, size)
       })
     },
-    // resizes pages: the page at the top of the screen stays in place
+    // resizes or replaces pages: the page at the top of the screen stays in place
     keepTopPageInPlace(resize: () => void) {
       const top = [...this.$el.querySelectorAll('[id^=page]')].find(e => e.getBoundingClientRect().bottom > 0)
       if (!top) {
@@ -273,9 +283,12 @@ export default Vue.extend({
       const topBefore = top.getBoundingClientRect().top
       resize()
       this.$nextTick(() => {
-        const shift = top.getBoundingClientRect().top - topBefore
+        // found again, as the element of the page can be replaced (an image by a PDF page)
+        const topNow = document.getElementById(top.id)
+        if (!topNow) return
+        const shift = topNow.getBoundingClientRect().top - topBefore
         if (shift) window.scrollBy(0, shift)
-        this.keepCurrentPageOnScreen(top)
+        this.keepCurrentPageOnScreen(topNow)
       })
     },
     // a current page pushed off the screen is replaced by the page at the top
