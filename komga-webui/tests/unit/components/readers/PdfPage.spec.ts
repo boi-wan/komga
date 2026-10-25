@@ -13,6 +13,7 @@ interface MockView {
 
 const mockViews: MockView[] = []
 const mockDraw: { error?: any } = {}
+const mockPdfJs: { error?: any } = {}
 jest.mock('@/functions/pdfjs', () => {
   class MockPageView {
     div = globalThis.document.createElement('div')
@@ -44,7 +45,7 @@ jest.mock('@/functions/pdfjs', () => {
   }
 
   return {
-    loadPdfJs: async () => ({
+    loadPdfJs: async () => mockPdfJs.error ? Promise.reject(mockPdfJs.error) : ({
       lib: {PixelsPerInch: {PDF_TO_CSS_UNITS: 96 / 72}},
       viewer: {RenderingStates: {INITIAL: 0}},
       createPageView: (options: any) => new MockPageView(options),
@@ -73,6 +74,7 @@ const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 beforeEach(() => {
   mockViews.length = 0
   mockDraw.error = undefined
+  mockPdfJs.error = undefined
   jest.mocked(loadPdfPage).mockReset()
 })
 
@@ -118,13 +120,23 @@ describe('PdfPage', () => {
     expect(wrapper.emitted('fail')).toBeUndefined()
   })
 
-  test('given page that cannot be loaded when loading then the failure is reported', async () => {
+  test('given page that cannot be loaded when loading then the failure is reported for this page', async () => {
     jest.mocked(loadPdfPage).mockRejectedValue(new Error('HTTP 500'))
 
     const wrapper = mountPage()
     await flush()
 
-    expect(wrapper.emitted('fail')).toHaveLength(1)
+    expect(wrapper.emitted('fail')).toEqual([[false]])
+  })
+
+  test('given pdf.js that cannot be loaded when loading then the failure is reported for every page', async () => {
+    mockPdfJs.error = new Error('chunk not loaded')
+
+    const wrapper = mountPage()
+    await flush()
+
+    expect(wrapper.emitted('fail')).toEqual([[true]])
+    expect(loadPdfPage).not.toHaveBeenCalled()
   })
 
   test('given load aborted when loading then no failure is reported', async () => {
@@ -158,7 +170,7 @@ describe('PdfPage', () => {
     await wrapper.setProps({height: 300})
     await flush()
 
-    expect(wrapper.emitted('fail')).toHaveLength(1)
+    expect(wrapper.emitted('fail')).toEqual([[false]])
     expect(loaded.release).toHaveBeenCalledTimes(1)
   })
 

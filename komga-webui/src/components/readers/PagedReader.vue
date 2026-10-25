@@ -28,8 +28,8 @@
         <div class="full-height d-flex flex-column justify-center">
           <div :class="`d-flex flex-row${flipDirection ? '-reverse' : ''} justify-center px-0 mx-0`">
             <template v-for="(page, j) in spread">
-              <!--  PDF pages are drawn around the current spread only; a PDF page pdf.js cannot draw is shown as an image  -->
-              <template v-if="page.pdfUrl && !failedPdfPages[page.number]">
+              <!--  PDF pages are drawn around the current spread only  -->
+              <template v-if="page.pdfUrl">
                 <pdf-page v-if="eagerLoad(i)"
                           :key="page.pdfUrl"
                           class="pdf-page-fit"
@@ -40,7 +40,7 @@
                           :height="$vuetify.breakpoint.height"
                           :priority="Math.abs(carouselPage - i)"
                           :text-selection="textSelection"
-                          @fail="$set(failedPdfPages, page.number, true)"
+                          @fail="everyPage => $emit('pdf-page-fail', page.number, everyPage)"
                 />
               </template>
               <img v-else
@@ -103,7 +103,6 @@ import {shortcutsLTR, shortcutsRTL, shortcutsVertical} from '@/functions/shortcu
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {buildSpreads} from '@/functions/book-spreads'
 import {asyncPdfPage} from '@/components/readers/async-pdf-page'
-import {sameBookPages} from '@/functions/reader-pages'
 
 export default Vue.extend({
   name: 'PagedReader',
@@ -115,7 +114,6 @@ export default Vue.extend({
       logger: 'PagedReader',
       carouselPage: 0,
       spreads: [] as PageDtoWithUrl[][],
-      failedPdfPages: {} as Record<number, boolean>,
     }
   },
   props: {
@@ -154,10 +152,8 @@ export default Vue.extend({
   },
   watch: {
     pages: {
-      handler(val, old) {
+      handler(val) {
         this.spreads = buildSpreads(val, this.pageLayout)
-        // the failures of a book are kept when the rendering of its PDF pages is turned off and on
-        if (!sameBookPages(val, old)) this.failedPdfPages = {}
       },
       immediate: true,
     },

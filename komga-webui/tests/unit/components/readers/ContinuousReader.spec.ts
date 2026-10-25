@@ -159,19 +159,16 @@ describe('Page sizes', () => {
 })
 
 describe('Failed PDF pages', () => {
-  test('given a PDF page on the screen when pdf.js cannot draw it then it is shown as its server image', async () => {
+  test('given a PDF page when pdf.js cannot draw it then the reader reports it', () => {
     mountReader()
-    intersect(10, true)
 
-    pdfPage(10).vm.$emit('fail')
-    await wrapper.vm.$nextTick()
+    pdfPage(10).vm.$emit('fail', false)
 
-    expect(wrapper.find('img#page10').attributes('src')).toEqual('/pages/10')
-    expect(mountedPages()).toEqual([8, 9, 11, 12])
+    expect(wrapper.emitted('pdf-page-fail')).toEqual([[10, false]])
   })
 })
 
-describe('PDF rendering turned off and on', () => {
+describe('Pages switched between pdf.js and images', () => {
   const asImages = pages.map(p => ({...p, pdfUrl: undefined}))
   const pageTop = (n: number) => document.getElementById(`page${n}`)!!.getBoundingClientRect().top
 
@@ -208,14 +205,18 @@ describe('PDF rendering turned off and on', () => {
     expect(pageTop(5)).toEqual(-500)
   })
 
-  test('given a PDF page pdf.js cannot draw when the rendering is turned off and on then it stays an image', async () => {
+  test('given pages on the screen when a page above them becomes an image then the page at the top stays in place, and the pages around stay mounted', async () => {
     await scrolledToPage5AtOriginalScale()
-    pdfPage(5).vm.$emit('fail')
+    intersect(6, true)
+    intersect(7, true)
+    jest.runAllTimers()
     await wrapper.vm.$nextTick()
 
-    await wrapper.setProps({pages: asImages})
-    await wrapper.setProps({pages: pages})
+    await wrapper.setProps({pages: pages.map(p => p.number === 4 ? {...p, pdfUrl: undefined} : p)})
+    await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('img#page5').exists()).toBe(true)
+    expect(wrapper.find('img#page4').exists()).toBe(true)
+    expect(pageTop(5)).toEqual(-500)
+    expect(mountedPages()).toEqual([3, 5, 6, 7, 8, 9])
   })
 })

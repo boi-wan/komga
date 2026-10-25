@@ -7,13 +7,14 @@
 <script lang="ts">
 import Vue, {markRaw, PropType} from 'vue'
 import {ContinuousScaleType, ScaleType} from '@/types/enum-reader'
-import {loadPdfJs} from '@/functions/pdfjs'
+import {loadPdfJs, PdfJs} from '@/functions/pdfjs'
 import {loadPdfPage} from '@/functions/pdf-page-source'
 import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
 import type {PDFPageView} from 'pdfjs-viewer'
 
 // A PDF page drawn by pdf.js while mounted: the readers mount it around the current page, keyed by its url.
 // Emits load with the size of the page at scale 1, and fail when pdf.js cannot draw it: the reader shows the page as an image.
+// fail has true when pdf.js itself could not be loaded, so no page can be drawn.
 export default Vue.extend({
   name: 'PdfPage',
   data: () => {
@@ -86,8 +87,15 @@ export default Vue.extend({
     async load() {
       const loadAbort = new AbortController()
       this.loadAbort = loadAbort
+      let pdfJs: PdfJs
       try {
-        const {lib, createPageView} = await loadPdfJs()
+        pdfJs = await loadPdfJs()
+      } catch (e) {
+        this.fail(e, true)
+        return
+      }
+      try {
+        const {lib, createPageView} = pdfJs
         const {pdfPage, release} = await loadPdfPage(this.url, () => this.priority, loadAbort.signal)
         // the page can be unmounted between the end of the loading and this line
         if (loadAbort.signal.aborted) {
@@ -125,10 +133,10 @@ export default Vue.extend({
         if (this.pageView === pageView) this.fail(e)
       }
     },
-    fail(e: any) {
+    fail(e: any, everyPage = false) {
       this.$warn('[PdfPage]', `page:${this.pageNumber}`, e)
       this.unload()
-      this.$emit('fail')
+      this.$emit('fail', everyPage)
     },
     unload() {
       this.loadAbort?.abort()

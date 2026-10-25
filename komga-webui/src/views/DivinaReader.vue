@@ -138,6 +138,7 @@
         :sidePadding="sidePadding"
         :page-margin="pageMargin"
         :text-selection="textSelection"
+        @pdf-page-fail="onPdfPageFail"
         @menu="toggleToolbars()"
         @jump-previous="jumpToPrevious()"
         @jump-next="jumpToNext()"
@@ -153,6 +154,7 @@
         :animations="animations"
         :swipe="swipe"
         :text-selection="textSelection"
+        @pdf-page-fail="onPdfPageFail"
         @menu="toggleToolbars()"
         @jump-previous="jumpToPrevious()"
         @jump-next="jumpToNext()"
@@ -361,7 +363,7 @@ import jsFileDownloader from 'js-file-downloader'
 import screenfull from 'screenfull'
 import {ItemTypes} from '@/types/items'
 import {getBookReadRouteFromMedia} from '@/functions/book-format'
-import {readerPages} from '@/functions/reader-pages'
+import {toReaderPages} from '@/functions/reader-pages'
 
 export default Vue.extend({
   name: 'DivinaReader',
@@ -403,6 +405,10 @@ export default Vue.extend({
       goToPage: 1,
       // the clicks select the text of the PDF pages instead of turning pages
       textSelection: false,
+      // PDF pages of the book that pdf.js could not draw, shown as images
+      failedPdfPages: {} as Record<number, boolean>,
+      // pdf.js itself could not be loaded for the book: every page is shown as an image
+      pdfJsUnavailable: false,
       settings: {
         pageLayout: PagedReaderLayout.SINGLE_PAGE,
         swipe: false,
@@ -583,7 +589,7 @@ export default Vue.extend({
       return this.book.media?.mediaProfile === MediaProfile.PDF
     },
     readerPages(): PageDtoWithUrl[] {
-      return readerPages(this.pages, this.pdfClientRendering)
+      return toReaderPages(this.pages, this.pdfClientRendering && !this.pdfJsUnavailable, this.failedPdfPages)
     },
     // pages drawn by pdf.js have their text
     canSelectText(): boolean {
@@ -750,9 +756,11 @@ export default Vue.extend({
       pageDtos.forEach((p: any) => p['url'] = this.getPageUrl(p))
       if (this.pdfBook)
         pageDtos.forEach((p: any) => p['pdfUrl'] = bookPageRawUrl(bookId, p.number))
-      this.pages = pageDtos as PageDtoWithUrl[]
-      // each book opens in read mode
+      // each book opens in read mode, and pdf.js tries all its pages
       this.textSelection = false
+      this.failedPdfPages = {}
+      this.pdfJsUnavailable = false
+      this.pages = pageDtos as PageDtoWithUrl[]
 
       this.$debug('[setup]', `pages count:${this.pagesCount}`, 'read progress:', this.book.readProgress)
       if (page && page >= 1 && page <= this.pagesCount) {
@@ -920,6 +928,10 @@ export default Vue.extend({
     },
     toggleHelp() {
       this.showHelp = !this.showHelp
+    },
+    onPdfPageFail(page: number, everyPage: boolean) {
+      if (everyPage) this.pdfJsUnavailable = true
+      else this.$set(this.failedPdfPages, page, true)
     },
     toggleTextSelection() {
       if (!this.canSelectText) return

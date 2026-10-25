@@ -102,14 +102,12 @@ describe('PDF pages', () => {
     expect(mountedPages(wrapper)).toEqual([6, 7, 8, 9, 10])
   })
 
-  test('given PDF page when pdf.js cannot draw it then it is shown as its server image', async () => {
+  test('given PDF page when pdf.js cannot draw it then the reader reports it', () => {
     const wrapper = mountReader()
 
-    wrapper.findAll('pdfpage-stub').at(0).vm.$emit('fail')
-    await wrapper.vm.$nextTick()
+    wrapper.findAll('pdfpage-stub').at(0).vm.$emit('fail', false)
 
-    expect(wrapper.findAll('img').wrappers.map(i => i.attributes('src'))).toEqual(['/pages/1'])
-    expect(wrapper.findAll('pdfpage-stub')).toHaveLength(4)
+    expect(wrapper.emitted('pdf-page-fail')).toEqual([[1, false]])
   })
 
   test('given PDF pages when the rendering is turned off then they are shown as images, on the same page', async () => {
@@ -122,16 +120,5 @@ describe('PDF pages', () => {
     expect(wrapper.findAll('pdfpage-stub')).toHaveLength(0)
     expect(wrapper.findAll('img')).toHaveLength(5)
     expect(wrapper.emitted('update:page')).toHaveLength(emitted)
-  })
-
-  test('given a PDF page pdf.js cannot draw when the rendering is turned off and on then it stays an image', async () => {
-    const wrapper = mountReader()
-    wrapper.findAll('pdfpage-stub').at(0).vm.$emit('fail')
-    await wrapper.vm.$nextTick()
-
-    await wrapper.setProps({pages: pages.map(p => ({...p, pdfUrl: undefined}))})
-    await wrapper.setProps({pages: pages})
-
-    expect(wrapper.findAll('img').wrappers.map(i => i.attributes('src'))).toEqual(['/pages/1'])
   })
 })

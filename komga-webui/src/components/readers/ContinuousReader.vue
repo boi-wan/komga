@@ -4,8 +4,8 @@
          v-scroll="onScroll"
     >
       <template v-for="(page, i) in pages">
-        <!--  the box of a PDF page is sized here, before PdfPage is loaded; a page pdf.js cannot draw is shown as an image  -->
-        <div v-if="page.pdfUrl && !failedPdfPages[page.number]"
+        <!--  the box of a PDF page is sized here, before PdfPage is loaded  -->
+        <div v-if="page.pdfUrl"
              :key="`page${i}`"
              :id="`page${page.number}`"
              :style="`margin: ${i === 0 ? 0 : pageMargin}px auto; ${pdfBoxStyle(page)}`"
@@ -22,7 +22,7 @@
                     :priority="pdfPageDistance(page.number)"
                     :text-selection="textSelection"
                     @load="size => onPdfPageLoad(page, size)"
-                    @fail="onPdfPageFail(page)"
+                    @fail="everyPage => $emit('pdf-page-fail', page.number, everyPage)"
           />
         </div>
         <img v-else
@@ -91,7 +91,6 @@ export default Vue.extend({
       pdfPageSizes: {} as Record<number, Size>,
       // size at scale 1 of the first PDF page loaded, used to estimate the size of the others
       pdfReferenceSize: undefined as Size | undefined,
-      failedPdfPages: {} as Record<number, boolean>,
     }
   },
   props: {
@@ -128,14 +127,18 @@ export default Vue.extend({
     pages: {
       handler(val, old) {
         if (sameBookPages(val, old)) {
-          // the PDF pages switch between pdf.js and images, with other sizes: the page at the top of the screen stays in place
-          this.keepTopPageInPlace(() => this.forgetVisiblePages())
+          // Pages switched between pdf.js and images, with other sizes: the page at the top of the screen stays in place.
+          // Their elements are replaced, and their observers report them again.
+          this.keepTopPageInPlace(() => val.forEach((p: PageDtoWithUrl, i: number) => {
+            if (p.pdfUrl !== old[i].pdfUrl) this.forgetPage(p.number)
+          }))
           return
         }
-        this.forgetVisiblePages()
+        this.seen = new Array(val.length).fill(false)
+        this.visiblePages = {}
+        this.visibilityChanges.clear()
         this.pdfPageSizes = {}
         this.pdfReferenceSize = undefined
-        this.failedPdfPages = {}
         if (this.page === 1) window.scrollTo(0, 0)
       },
       immediate: true,
@@ -227,11 +230,11 @@ export default Vue.extend({
       })
       this.visibilityChanges.clear()
     },
-    // the pages are rendered again, their observers report them again
-    forgetVisiblePages() {
-      this.seen = new Array(this.pages.length).fill(false)
-      this.visiblePages = {}
-      this.visibilityChanges.clear()
+    // a page rendered again is not seen or visible until its observer reports it
+    forgetPage(page: number) {
+      this.seen.splice(page - 1, 1, false)
+      this.$delete(this.visiblePages, page)
+      this.visibilityChanges.delete(page)
     },
     setCurrentPage(page: number) {
       this.currentPage = page
@@ -297,9 +300,6 @@ export default Vue.extend({
     keepCurrentPageOnScreen(top: Element) {
       const current = document.getElementById(`page${this.currentPage}`)?.getBoundingClientRect()
       if (current && (current.bottom <= 0 || current.top >= window.innerHeight)) this.setCurrentPage(pageNumberOf(top))
-    },
-    onPdfPageFail(page: PageDtoWithUrl) {
-      this.keepTopPageInPlace(() => this.$set(this.failedPdfPages, page.number, true))
     },
     pdfBoxStyle(page: PageDtoWithUrl): string {
       const size = this.pdfPageSizes[page.number] || estimatePdfPageSize(page, this.pdfReferenceSize)
