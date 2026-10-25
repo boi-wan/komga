@@ -36,6 +36,7 @@ describe('LoadQueue', () => {
     queue.run(first.task, () => 0)
     queue.run(deferredTask('far', started).task, () => 3)
     queue.run(deferredTask('near', started).task, () => 1)
+    await flush()
 
     first.complete()
     await flush()
@@ -51,6 +52,7 @@ describe('LoadQueue', () => {
     queue.run(first.task, () => 0)
     queue.run(deferredTask('a', started).task, () => 2)
     queue.run(deferredTask('b', started).task, () => distanceOfB)
+    await flush()
 
     distanceOfB = 1
     first.complete()
@@ -66,6 +68,7 @@ describe('LoadQueue', () => {
     const controller = new AbortController()
     queue.run(first.task, () => 0)
     const aborted = queue.run(deferredTask('aborted', started).task, () => 1, controller.signal)
+    await flush()
 
     controller.abort()
     first.complete()
@@ -80,6 +83,7 @@ describe('LoadQueue', () => {
     const controller = new AbortController()
     queue.run(deferredTask('running', started).task, () => 0)
     const aborted = queue.run(deferredTask('aborted', started).task, () => 1, controller.signal)
+    await flush()
 
     controller.abort()
 
@@ -108,6 +112,18 @@ describe('LoadQueue', () => {
     await expect(failing).rejects.toThrow('broken')
     await flush()
     expect(started).toEqual(['next'])
+  })
+
+  test('given tasks queued together when they start then the lowest priority values start first, whatever the order', async () => {
+    const queue = new LoadQueue(2)
+    const started: string[] = []
+
+    queue.run(deferredTask('page 1', started).task, () => 2)
+    queue.run(deferredTask('page 2', started).task, () => 1)
+    queue.run(deferredTask('page 3', started).task, () => 0)
+    await flush()
+
+    expect(started).toEqual(['page 3', 'page 2'])
   })
 
   test('given task when it completes then its result is returned', async () => {

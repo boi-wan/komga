@@ -5,10 +5,12 @@ interface QueuedTask {
 
 // Runs a limited number of tasks at once, picking the waiting task with the lowest priority value first.
 // Priorities are evaluated when a task is picked, so they can change while waiting.
+// Tasks queued together (e.g. by the pages mounted together) are all waiting when the first one is picked.
 export class LoadQueue {
   private readonly concurrency: number
   private readonly waiting: QueuedTask[] = []
   private running = 0
+  private nextScheduled = false
 
   constructor(concurrency: number) {
     this.concurrency = concurrency
@@ -38,6 +40,15 @@ export class LoadQueue {
       }
       signal?.addEventListener('abort', onAbort, {once: true})
       this.waiting.push(queued)
+      this.scheduleNext()
+    })
+  }
+
+  private scheduleNext() {
+    if (this.nextScheduled) return
+    this.nextScheduled = true
+    Promise.resolve().then(() => {
+      this.nextScheduled = false
       this.next()
     })
   }

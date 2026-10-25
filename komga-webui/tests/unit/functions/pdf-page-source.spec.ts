@@ -135,6 +135,8 @@ describe('Loading', () => {
   test('given page not needed anymore when its document is opened then it is rejected, and its document and worker released', async () => {
     const abort = new AbortController()
     const loading = loadPage(1, abort.signal)
+    // the load starts once the pages queued together are sorted
+    await Promise.resolve()
 
     abort.abort()
 
