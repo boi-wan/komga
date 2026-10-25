@@ -141,25 +141,37 @@ describe('PdfPage', () => {
 
     expect(loaded.release).toHaveBeenCalledTimes(1)
     expect(mockViews).toHaveLength(0)
-    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.emitted('fail')).toBeUndefined()
   })
 
-  test('given page that cannot be loaded when loading then the server image is shown', async () => {
+  test('given page that cannot be loaded when loading then the failure is reported', async () => {
     jest.mocked(loadPdfPage).mockRejectedValue(new Error('HTTP 500'))
 
     const wrapper = mountPage()
     await flush()
 
-    expect(wrapper.find('img').attributes('src')).toEqual('/pages/1')
+    expect(wrapper.emitted('fail')).toHaveLength(1)
   })
 
-  test('given load aborted when loading then no server image is shown', async () => {
+  test('given failed page when activated again then it is not loaded again', async () => {
+    jest.mocked(loadPdfPage).mockRejectedValue(new Error('HTTP 500'))
+    const wrapper = mountPage()
+    await flush()
+
+    await wrapper.setProps({active: false})
+    await wrapper.setProps({active: true})
+    await flush()
+
+    expect(loadPdfPage).toHaveBeenCalledTimes(1)
+  })
+
+  test('given load aborted when loading then no failure is reported', async () => {
     jest.mocked(loadPdfPage).mockRejectedValue(new DOMException('Page not needed anymore', 'AbortError'))
 
     const wrapper = mountPage()
     await flush()
 
-    expect(wrapper.find('img').exists()).toBe(false)
+    expect(wrapper.emitted('fail')).toBeUndefined()
   })
 
   test('given drawn page when the available space changes then it is drawn again at the new scale', async () => {
@@ -174,7 +186,7 @@ describe('PdfPage', () => {
     expect(mockViews[0].options.scale).toBeCloseTo(300 / 1056)
   })
 
-  test('given drawn page when drawing it again fails then the server image is shown', async () => {
+  test('given drawn page when drawing it again fails then the failure is reported and the page released', async () => {
     const loaded = loadedPage()
     jest.mocked(loadPdfPage).mockResolvedValue(loaded)
     const wrapper = mountPage()
@@ -184,21 +196,8 @@ describe('PdfPage', () => {
     await wrapper.setProps({height: 300})
     await flush()
 
-    expect(wrapper.find('img').attributes('src')).toEqual('/pages/1')
+    expect(wrapper.emitted('fail')).toHaveLength(1)
     expect(loaded.release).toHaveBeenCalledTimes(1)
-  })
-
-  test('given drawn page when drawing it again is cancelled then the page stays', async () => {
-    jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
-    const wrapper = mountPage()
-    await flush()
-
-    mockDraw.error = {name: 'RenderingCancelledException'}
-    await wrapper.setProps({height: 300})
-    await flush()
-
-    expect(wrapper.find('img').exists()).toBe(false)
-    expect(mockViews[0].destroyed).toBe(false)
   })
 
   test('given drawn page when text selection turns on then it is marked for text selection, without drawing the page again', async () => {

@@ -82,3 +82,15 @@ describe('Text selection mode', () => {
     expect(wrapper.findAll(zones)).toHaveLength(3)
   })
 })
+
+describe('PDF pages', () => {
+  test('given PDF page when pdf.js cannot draw it then it is shown as its server image', async () => {
+    const wrapper = mountReader()
+
+    wrapper.findAll('pdfpage-stub').at(0).vm.$emit('fail')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('img').wrappers.map(i => i.attributes('src'))).toEqual(['/pages/1'])
+    expect(wrapper.findAll('pdfpage-stub')).toHaveLength(4)
+  })
+})

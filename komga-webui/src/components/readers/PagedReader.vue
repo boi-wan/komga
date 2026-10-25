@@ -28,7 +28,8 @@
         <div class="full-height d-flex flex-column justify-center">
           <div :class="`d-flex flex-row${flipDirection ? '-reverse' : ''} justify-center px-0 mx-0`">
             <template v-for="(page, j) in spread">
-              <pdf-page v-if="page.pdfUrl"
+              <!--  a PDF page pdf.js cannot draw is shown as an image  -->
+              <pdf-page v-if="page.pdfUrl && !failedPdfPages[page.number]"
                         :key="`spread${i}-${j}`"
                         class="pdf-page-fit"
                         :page="page"
@@ -38,6 +39,7 @@
                         :active="eagerLoad(i)"
                         :priority="Math.abs(carouselPage - i)"
                         :text-selection="textSelection"
+                        @fail="$set(failedPdfPages, page.number, true)"
               />
               <img v-else
                    :alt="`Page ${page.number}`"
@@ -98,18 +100,19 @@ import {PagedReaderLayout, ScaleType} from '@/types/enum-reader'
 import {shortcutsLTR, shortcutsRTL, shortcutsVertical} from '@/functions/shortcuts/paged-reader'
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {buildSpreads} from '@/functions/book-spreads'
+import {asyncPdfPage} from '@/components/readers/async-pdf-page'
 
 export default Vue.extend({
   name: 'PagedReader',
   components: {
-    // loaded on demand, with pdf.js
-    PdfPage: () => import(/* webpackChunkName: "pdf-page" */ './PdfPage.vue'),
+    PdfPage: asyncPdfPage,
   },
   data: function () {
     return {
       logger: 'PagedReader',
       carouselPage: 0,
       spreads: [] as PageDtoWithUrl[][],
+      failedPdfPages: {} as Record<number, boolean>,
     }
   },
   props: {
@@ -150,6 +153,7 @@ export default Vue.extend({
     pages: {
       handler(val) {
         this.spreads = buildSpreads(val, this.pageLayout)
+        this.failedPdfPages = {}
       },
       immediate: true,
     },

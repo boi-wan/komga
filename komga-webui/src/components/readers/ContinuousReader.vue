@@ -4,8 +4,8 @@
          v-scroll="onScroll"
     >
       <template v-for="(page, i) in pages">
-        <!--  the box of a PDF page is sized here, before PdfPage is loaded  -->
-        <div v-if="page.pdfUrl"
+        <!--  the box of a PDF page is sized here, before PdfPage is loaded; a page pdf.js cannot draw is shown as an image  -->
+        <div v-if="page.pdfUrl && !failedPdfPages[page.number]"
              :key="`page${i}`"
              :id="`page${page.number}`"
              :style="`margin: ${i === 0 ? 0 : pageMargin}px auto; ${pdfBoxStyle(page)}`"
@@ -20,6 +20,7 @@
                     :priority="pdfPageDistance(page.number)"
                     :text-selection="textSelection"
                     @load="size => onPdfPageLoad(page, size)"
+                    @fail="onPdfPageFail(page)"
           />
         </div>
         <img v-else
@@ -64,14 +65,14 @@ import {ContinuousScaleType} from '@/types/enum-reader'
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {throttle} from 'lodash'
 import {estimatePdfPageSize, pdfPageBox, Size} from '@/functions/pdf-page-scale'
+import {asyncPdfPage} from '@/components/readers/async-pdf-page'
 
 const pageNumberOf = (pageElement: Element) => parseInt(pageElement.id.replace('page', ''))
 
 export default Vue.extend({
   name: 'ContinuousReader',
   components: {
-    // loaded on demand, with pdf.js
-    PdfPage: () => import(/* webpackChunkName: "pdf-page" */ './PdfPage.vue'),
+    PdfPage: asyncPdfPage,
   },
   data: () => {
     return {
@@ -85,6 +86,7 @@ export default Vue.extend({
       pdfPageSizes: {} as Record<number, Size>,
       // size at scale 1 of the first PDF page loaded, used to estimate the size of the others
       pdfReferenceSize: undefined as Size | undefined,
+      failedPdfPages: {} as Record<number, boolean>,
     }
   },
   props: {
@@ -124,6 +126,7 @@ export default Vue.extend({
         this.visiblePages = {}
         this.pdfPageSizes = {}
         this.pdfReferenceSize = undefined
+        this.failedPdfPages = {}
         if (this.page === 1) window.scrollTo(0, 0)
       },
       immediate: true,
@@ -262,6 +265,9 @@ export default Vue.extend({
         const current = document.getElementById(`page${this.currentPage}`)?.getBoundingClientRect()
         if (current && (current.bottom <= 0 || current.top >= window.innerHeight)) this.setCurrentPage(pageNumberOf(top))
       })
+    },
+    onPdfPageFail(page: PageDtoWithUrl) {
+      this.keepTopPageInPlace(() => this.$set(this.failedPdfPages, page.number, true))
     },
     pdfBoxStyle(page: PageDtoWithUrl): string {
       const size = this.pdfPageSizes[page.number] || estimatePdfPageSize(page, this.pdfReferenceSize)

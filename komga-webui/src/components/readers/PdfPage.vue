@@ -1,14 +1,6 @@
 <template>
   <div class="pdf-page" :class="{'text-selection': textSelection}">
-    <img v-if="failed"
-         :src="page.url"
-         :alt="`Page ${page.number}`"
-         :style="`max-width: ${width}px; max-height: ${height}px;`"
-    />
-    <div v-else
-         ref="container"
-         class="pdfViewer singlePageView"
-    />
+    <div ref="container" class="pdfViewer singlePageView"/>
   </div>
 </template>
 
@@ -24,6 +16,7 @@ import type {PDFPageView} from 'pdfjs-viewer'
 // iOS Safari cannot draw canvases larger than this
 const MAX_CANVAS_PIXELS = 4096 * 4096
 
+// Emits load with the size of the page at scale 1, and fail when pdf.js cannot draw it: the reader shows the page as an image.
 export default Vue.extend({
   name: 'PdfPage',
   data: () => {
@@ -143,7 +136,7 @@ export default Vue.extend({
         this.pageView.setPdfPage(pdfPage)
         await this.draw()
       } catch (e) {
-        this.fail(e)
+        if (e?.name !== 'AbortError') this.fail(e)
       } finally {
         if (this.loadAbort === loadAbort) this.loadAbort = undefined
       }
@@ -151,20 +144,19 @@ export default Vue.extend({
     async draw() {
       const {viewer} = await loadPdfJs()
       const pageView = this.pageView
-      if (pageView?.renderingState !== viewer.RenderingStates.INITIAL) return
+      if (!pageView || pageView.renderingState !== viewer.RenderingStates.INITIAL) return
       try {
+        // a drawing cancelled by a new scale or an unload resolves
         await pageView.draw()
       } catch (e) {
-        // a new scale or an unload cancels the drawing in progress
-        if (e?.name !== 'RenderingCancelledException' && this.pageView === pageView) this.fail(e)
+        if (this.pageView === pageView) this.fail(e)
       }
     },
-    // the page is shown as a server image instead
     fail(e: any) {
-      if (e?.name === 'AbortError') return
       this.$warn('[PdfPage]', `page:${this.page.number}`, e)
       this.unload()
       this.failed = true
+      this.$emit('fail')
     },
     unload() {
       this.loadAbort?.abort()
