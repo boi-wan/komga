@@ -15,6 +15,19 @@ export const MAX_PDF_PAGE_BYTES = 16 * 1024 * 1024
 
 const queue = new LoadQueue(2)
 
+// icons of the text annotations, copied from pdf.js by vue.config.js
+const TEXT_ANNOTATION_ICONS = ['check', 'comment', 'help', 'insert', 'key', 'newparagraph', 'noicon', 'note', 'paragraph']
+
+// pdf.js shows the icon of a text annotation from `annotation-${name}.svg`, with the name read from the file:
+// any other name, like a path, would make the browser request another url of Komga (e.g. /api/logout)
+function keepTextAnnotationIcons(pdfPage: PDFPageProxy, lib: typeof PdfJsLib) {
+  const getAnnotations = pdfPage.getAnnotations.bind(pdfPage)
+  pdfPage.getAnnotations = async params => (await getAnnotations(params)).map(annotation =>
+    annotation.annotationType === lib.AnnotationType.TEXT && !TEXT_ANNOTATION_ICONS.includes(String(annotation.name).toLowerCase())
+      ? {...annotation, name: 'Note'}
+      : annotation)
+}
+
 // all the loaded pages share a single worker, destroyed once no page has used it for a while
 const WORKER_IDLE_MS = 10000
 let worker: PDFWorker | undefined
@@ -62,6 +75,7 @@ export function loadPdfPage(url: string, priority: () => number, signal: AbortSi
     try {
       const pdfPage = await (await loadingTask.promise).getPage(1)
       if (signal.aborted) throw new DOMException('Page not needed anymore', 'AbortError')
+      keepTextAnnotationIcons(pdfPage, lib)
       return {pdfPage, release}
     } catch (e) {
       release()

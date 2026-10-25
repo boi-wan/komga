@@ -13,6 +13,7 @@ export interface PdfJs {
   },
   // options shared by all the page views
   pageViewOptions: {
+    imageResourcesPath: string,
     l10n: PdfJsViewer.GenericL10n,
     layerProperties: PdfJsViewer.LayerProperties,
   },
@@ -46,6 +47,8 @@ async function importPdfJs(): Promise<PdfJs> {
       iccUrl: `${base}iccs/`,
     },
     pageViewOptions: {
+      // icons of the text annotations
+      imageResourcesPath: `${base}images/`,
       // otherwise each page view parses its own copy of the translations
       l10n: new viewer.GenericL10n(),
       layerProperties: {

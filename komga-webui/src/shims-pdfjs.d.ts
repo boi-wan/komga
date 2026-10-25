@@ -17,6 +17,17 @@ declare module 'pdfjs-lib' {
     ENABLE: number,
   }
 
+  export const AnnotationType: {
+    TEXT: number,
+  }
+
+  // the data of an annotation, depending on its type
+  export interface Annotation {
+    annotationType: number,
+    // icon of a text annotation
+    name?: string,
+  }
+
   export interface PageViewport {
     width: number,
     height: number,
@@ -24,6 +35,8 @@ declare module 'pdfjs-lib' {
 
   export interface PDFPageProxy {
     getViewport(params: { scale: number }): PageViewport
+
+    getAnnotations(params?: { intent?: string }): Promise<Annotation[]>
   }
 
   export interface PDFDocumentProxy {
@@ -98,6 +111,7 @@ declare module 'pdfjs-viewer' {
       maxCanvasPixels: number,
       enableDetailCanvas: boolean,
       enableAutoLinking: boolean,
+      imageResourcesPath: string,
       l10n: GenericL10n,
       layerProperties: LayerProperties,
     })

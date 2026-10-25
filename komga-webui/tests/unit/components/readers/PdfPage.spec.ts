@@ -60,7 +60,7 @@ jest.mock('@/functions/pdf-page-source', () => ({loadPdfPage: jest.fn()}))
 // a US Letter page, with the release of its document
 function loadedPage() {
   return {
-    pdfPage: {getViewport: ({scale}: { scale: number }) => ({width: 612 * scale, height: 792 * scale})},
+    pdfPage: {getViewport: ({scale}: { scale: number }) => ({width: 612 * scale, height: 792 * scale}), getAnnotations: async () => []},
     release: jest.fn(),
   }
 }

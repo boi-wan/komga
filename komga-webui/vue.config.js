@@ -43,6 +43,8 @@ module.exports = {
           // quickjs runs the JavaScript embedded in PDF files, which is never enabled
           {from: 'wasm', to: 'wasm/', globOptions: {ignore: ['**/quickjs-eval.*']}},
           {from: 'iccs', to: 'iccs/'},
+          // icons of the text annotations
+          {from: 'legacy/web/images/annotation-*.svg', to: 'images/[name][ext]'},
         ].map(pattern => ({
           ...pattern,
           from: `${pdfjsDist}/${pattern.from}`,

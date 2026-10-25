@@ -3,9 +3,11 @@ import type * as PdfPageSource from '@/functions/pdf-page-source'
 // fake pdf.js, recording the workers and documents created and destroyed
 const mockWorkers: { destroyed: boolean }[] = []
 const mockDocuments: { destroyed: boolean }[] = []
+const mockAnnotations: { annotationType: number, name?: string }[] = []
 jest.mock('@/functions/pdfjs', () => ({
   loadPdfJs: async () => ({
     lib: {
+      AnnotationType: {TEXT: 1},
       PDFWorker: class {
         destroyed = false
 
@@ -20,7 +22,7 @@ jest.mock('@/functions/pdfjs', () => ({
       getDocument: () => {
         const document = {
           destroyed: false,
-          promise: Promise.resolve({getPage: async () => ({})}),
+          promise: Promise.resolve({getPage: async () => ({getAnnotations: async () => mockAnnotations})}),
           destroy: async () => {
             document.destroyed = true
           },
@@ -52,6 +54,7 @@ beforeEach(() => {
   jest.useFakeTimers()
   mockWorkers.length = 0
   mockDocuments.length = 0
+  mockAnnotations.length = 0
   global.fetch = jest.fn(async () => response(100)) as any
   source = require('@/functions/pdf-page-source')
 })
@@ -141,5 +144,24 @@ describe('Loading', () => {
 
     await expect(loadPage(1)).rejects.toThrow('HTTP 500')
     expect(mockDocuments).toHaveLength(0)
+  })
+})
+
+describe('Text annotations', () => {
+  test('given text annotation with an icon of pdf.js when loading then its icon is kept', async () => {
+    mockAnnotations.push({annotationType: 1, name: 'Comment'}, {annotationType: 1, name: 'NewParagraph'})
+
+    const {pdfPage} = await loadPage(1)
+
+    expect((await pdfPage.getAnnotations()).map(a => a.name)).toEqual(['Comment', 'NewParagraph'])
+  })
+
+  test('given text annotation whose icon name is a path when loading then it gets the note icon', async () => {
+    const link = {annotationType: 2, name: 'x/../../api/logout?'}
+    mockAnnotations.push({annotationType: 1, name: 'x/../../api/logout?'}, {annotationType: 1}, link)
+
+    const {pdfPage} = await loadPage(1)
+
+    expect(await pdfPage.getAnnotations()).toEqual([{annotationType: 1, name: 'Note'}, {annotationType: 1, name: 'Note'}, link])
   })
 })
