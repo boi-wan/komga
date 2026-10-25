@@ -131,7 +131,7 @@
     <div class="full-height">
       <continuous-reader
         v-if="continuousReader"
-        :pages="pages"
+        :pages="readerPages"
         :page.sync="page"
         :animations="animations"
         :scale="continuousScale"
@@ -145,7 +145,7 @@
 
       <paged-reader
         v-else
-        :pages="pages"
+        :pages="readerPages"
         :page.sync="page"
         :reading-direction="readingDirection"
         :page-layout="pageLayout"
@@ -204,6 +204,10 @@
             <v-list-item>
               <settings-switch v-model="alwaysFullscreen" :label="$t('bookreader.settings.always_fullscreen')"
                                :disabled="!screenfull.isEnabled"/>
+            </v-list-item>
+
+            <v-list-item v-if="pdfBook">
+              <settings-switch v-model="pdfClientRendering" :label="$t('bookreader.settings.pdf_client_rendering')"/>
             </v-list-item>
 
             <v-subheader class="font-weight-black text-h6">{{ $t('bookreader.settings.display') }}</v-subheader>
@@ -402,6 +406,7 @@ export default Vue.extend({
         pageLayout: PagedReaderLayout.SINGLE_PAGE,
         swipe: false,
         alwaysFullscreen: false,
+        pdfClientRendering: true,
         animations: true,
         scale: ScaleType.SCREEN,
         continuousScale: ContinuousScaleType.WIDTH,
@@ -472,6 +477,7 @@ export default Vue.extend({
     this.pageLayout = this.$store.state.persistedState.webreader.paged.pageLayout
     this.swipe = this.$store.state.persistedState.webreader.swipe
     this.alwaysFullscreen = this.$store.state.persistedState.webreader.alwaysFullscreen
+    this.pdfClientRendering = this.$store.state.persistedState.webreader.pdfClientRendering
     this.scale = this.$store.state.persistedState.webreader.paged.scale
     this.continuousScale = this.$store.state.persistedState.webreader.continuous.scale
     this.sidePadding = this.$store.state.persistedState.webreader.continuous.padding
@@ -507,6 +513,10 @@ export default Vue.extend({
     next()
   },
   watch: {
+    // e.g. the rendering of PDF pages turned off while selecting text
+    canSelectText(val) {
+      if (!val) this.textSelection = false
+    },
     page: {
       handler(val, old) {
         if (val) {
@@ -568,9 +578,17 @@ export default Vue.extend({
     currentPage(): PageDtoWithUrl {
       return this.pages[this.page - 1]
     },
+    pdfBook(): boolean {
+      return this.book.media?.mediaProfile === MediaProfile.PDF
+    },
+    // the pages with a pdfUrl are drawn by pdf.js, the others are shown as images
+    readerPages(): PageDtoWithUrl[] {
+      if (this.pdfClientRendering || !this.pdfBook) return this.pages
+      return this.pages.map(p => ({...p, pdfUrl: undefined}))
+    },
     // pages drawn by pdf.js have their text
     canSelectText(): boolean {
-      return this.pages.some(p => p.pdfUrl)
+      return this.readerPages.some(p => p.pdfUrl)
     },
 
     animations: {
@@ -668,6 +686,15 @@ export default Vue.extend({
         this.$store.commit('setWebreaderSwipe', swipe)
       },
     },
+    pdfClientRendering: {
+      get: function (): boolean {
+        return this.settings.pdfClientRendering
+      },
+      set: function (pdfClientRendering: boolean): void {
+        this.settings.pdfClientRendering = pdfClientRendering
+        this.$store.commit('setWebreaderPdfClientRendering', pdfClientRendering)
+      },
+    },
     alwaysFullscreen: {
       get: function (): boolean {
         return this.settings.alwaysFullscreen
@@ -722,7 +749,7 @@ export default Vue.extend({
 
       const pageDtos = (await this.$komgaBooks.getBookPages(bookId))
       pageDtos.forEach((p: any) => p['url'] = this.getPageUrl(p))
-      if (this.book.media.mediaProfile === MediaProfile.PDF)
+      if (this.pdfBook)
         pageDtos.forEach((p: any) => p['pdfUrl'] = bookPageRawUrl(bookId, p.number))
       this.pages = pageDtos as PageDtoWithUrl[]
       // each book opens in read mode

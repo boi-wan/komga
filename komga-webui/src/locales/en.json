@@ -140,6 +140,7 @@
       "page_layout": "Page layout",
       "page_margin": "Page margin",
       "paged": "Paginated Reader Options",
+      "pdf_client_rendering": "Render PDF pages in the browser",
       "reading_mode": "Reading mode",
       "scale_type": "Scale type",
       "side_padding": "Side padding",

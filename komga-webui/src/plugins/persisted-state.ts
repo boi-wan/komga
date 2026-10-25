@@ -18,6 +18,7 @@ export const persistedModule: Module<any, any> = {
       readingDirection: '',
       swipe: false,
       alwaysFullscreen: false,
+      pdfClientRendering: true,
       animations: true,
       background: '',
     },
@@ -123,6 +124,9 @@ export const persistedModule: Module<any, any> = {
     },
     setWebreaderAlwaysFullscreen(state, val) {
       state.webreader.alwaysFullscreen = val
+    },
+    setWebreaderPdfClientRendering(state, val) {
+      state.webreader.pdfClientRendering = val
     },
     setWebreaderAnimations(state, val) {
       state.webreader.animations = val
