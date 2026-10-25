@@ -1,6 +1,7 @@
 import {mount} from '@vue/test-utils'
 import PdfPage from '@/components/readers/PdfPage.vue'
 import {drawPdfPage, loadPdfPage} from '@/functions/pdf-page-source'
+import {pinchZoom} from '@/functions/pinch-zoom'
 import {ScaleType} from '@/types/enum-reader'
 
 // fake page views, recording what pdf.js would draw
@@ -53,6 +54,8 @@ jest.mock('@/functions/pdfjs', () => {
   }
 })
 jest.mock('@/functions/pdf-page-source', () => ({loadPdfPage: jest.fn(), drawPdfPage: jest.fn()}))
+// the pinch-zoom of the browser, set by the tests
+jest.mock('@/functions/pinch-zoom', () => ({pinchZoom: require('vue').observable({scale: 1})}))
 
 // a US Letter page, with the release of its document
 function loadedPage() {
@@ -75,6 +78,7 @@ beforeEach(() => {
   mockViews.length = 0
   mockDraw.error = undefined
   mockPdfJs.error = undefined
+  pinchZoom.scale = 1
   jest.mocked(loadPdfPage).mockReset()
   // drawn right away, unless a test makes the pages wait for their turn
   jest.mocked(drawPdfPage).mockReset().mockImplementation(draw => draw())
@@ -200,6 +204,39 @@ describe('PdfPage', () => {
     const signals = jest.mocked(drawPdfPage).mock.calls.map(call => call[2].aborted)
     expect(signals).toEqual([true, false])
     expect(mockViews[0].options.scale).toBeCloseTo(300 / 1056)
+  })
+
+  test('given drawn page when pinch-zoomed then it is drawn again for the zoom, shrunk back to its size', async () => {
+    jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
+    const wrapper = mountPage()
+    await flush()
+    const scale = mockViews[0].options.scale
+
+    pinchZoom.scale = 2
+    await flush()
+
+    expect(mockViews[0].options.scale).toBeCloseTo(scale * 2)
+    expect(mockViews[0].draws).toEqual(2)
+    const box = wrapper.find('.pdfViewer').element.parentElement!!
+    expect(box.style.width).toEqual(`${Math.floor(816 * scale)}px`)
+    expect(box.style.height).toEqual(`${Math.floor(1056 * scale)}px`)
+    expect(wrapper.find('.pdfViewer').attributes('style')).toContain('scale(0.5)')
+  })
+
+  test('given pinch-zoomed page when the zoom is back to 1 then it is drawn as before', async () => {
+    jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
+    const wrapper = mountPage()
+    await flush()
+    const scale = mockViews[0].options.scale
+    pinchZoom.scale = 2
+    await flush()
+
+    pinchZoom.scale = 1
+    await flush()
+
+    expect(mockViews[0].options.scale).toEqual(scale)
+    expect(wrapper.find('.pdfViewer').attributes('style') || '').not.toContain('scale')
+    expect(wrapper.find('.pdfViewer').element.parentElement!!.style.width).toEqual('')
   })
 
   test('given drawn page when text selection turns on then it is marked for text selection, without drawing the page again', async () => {

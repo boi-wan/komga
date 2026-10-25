@@ -1,6 +1,9 @@
 <template>
   <div class="pdf-page" :class="{'text-selection': textSelection}">
-    <div ref="container" class="pdfViewer singlePageView"/>
+    <!--  pinch-zoomed, the page is drawn larger, and shrunk back to its size  -->
+    <div :style="zoomBoxStyle">
+      <div ref="container" class="pdfViewer singlePageView" :style="zoomStyle"/>
+    </div>
   </div>
 </template>
 
@@ -10,6 +13,7 @@ import {ContinuousScaleType, ScaleType} from '@/types/enum-reader'
 import {loadPdfJs, PdfJs} from '@/functions/pdfjs'
 import {drawPdfPage, loadPdfPage} from '@/functions/pdf-page-source'
 import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
+import {pinchZoom} from '@/functions/pinch-zoom'
 import type {PDFPageView} from 'pdfjs-viewer'
 
 // A PDF page drawn by pdf.js while mounted: the readers mount it around the current page, keyed by its url.
@@ -71,7 +75,7 @@ export default Vue.extend({
     this.unload()
   },
   watch: {
-    scale(val, old) {
+    drawScale(val, old) {
       // the first scale is applied by load()
       if (val && old && this.pageView) {
         this.pageView.update({scale: val})
@@ -83,6 +87,22 @@ export default Vue.extend({
     scale(): number | undefined {
       if (!this.pageSize) return undefined
       return pdfPageScale(this.pageSize, {width: this.width, height: this.height}, this.fit)
+    },
+    zoom(): number {
+      return pinchZoom.scale
+    },
+    // the scale the page is drawn at, for the pinch-zoom of the browser
+    drawScale(): number | undefined {
+      return this.scale && this.scale * this.zoom
+    },
+    // the size of the page, which the page drawn for the zoom is shrunk back to
+    zoomBoxStyle(): string {
+      if (this.zoom === 1 || !this.pageSize || !this.scale) return ''
+      return `width: ${Math.floor(this.pageSize.width * this.scale)}px; height: ${Math.floor(this.pageSize.height * this.scale)}px; overflow: hidden;`
+    },
+    zoomStyle(): string {
+      if (this.zoom === 1) return ''
+      return `transform: scale(${1 / this.zoom}); transform-origin: 0 0;`
     },
   },
   methods: {
@@ -115,7 +135,7 @@ export default Vue.extend({
           id: this.pageNumber,
           pdfPage,
           viewport,
-          scale: this.scale!!,
+          scale: this.drawScale!!,
         }))
         await this.draw()
       } catch (e) {
