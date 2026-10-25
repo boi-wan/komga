@@ -54,7 +54,7 @@ declare module 'pdfjs-lib' {
   }
 
   export function getDocument(params: {
-    data: ArrayBuffer,
+    data: Uint8Array,
     worker: PDFWorker,
     cMapUrl: string,
     standardFontDataUrl: string,

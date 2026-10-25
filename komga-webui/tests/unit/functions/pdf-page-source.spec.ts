@@ -4,6 +4,7 @@ import type * as PdfPageSource from '@/functions/pdf-page-source'
 const mockWorkers: { destroyed: boolean }[] = []
 const mockDocuments: { destroyed: boolean }[] = []
 const mockAnnotations: { annotationType: number, name?: string }[] = []
+const mockGetDocument: { error?: Error } = {}
 jest.mock('@/functions/pdfjs', () => ({
   loadPdfJs: async () => ({
     lib: {
@@ -20,6 +21,7 @@ jest.mock('@/functions/pdfjs', () => ({
         }
       },
       getDocument: () => {
+        if (mockGetDocument.error) throw mockGetDocument.error
         const document = {
           destroyed: false,
           promise: Promise.resolve({getPage: async () => ({getAnnotations: async () => mockAnnotations})}),
@@ -35,13 +37,24 @@ jest.mock('@/functions/pdfjs', () => ({
   }),
 }))
 
-function response(size: number, status = 200) {
+// a response streaming size bytes, by chunks of 1 MiB
+function response(size: number, {status = 200, contentLength = true} = {}) {
+  let sent = 0
+  const reader = {
+    read: async () => {
+      if (sent >= size) return {done: true, value: undefined}
+      const chunk = new Uint8Array(Math.min(size - sent, 1024 * 1024))
+      sent += chunk.length
+      return {done: false, value: chunk}
+    },
+    cancel: jest.fn(),
+  }
   return {
     ok: status === 200,
     status: status,
-    headers: {get: (name: string) => name === 'Content-Length' ? String(size) : null},
-    body: {cancel: jest.fn()},
-    arrayBuffer: async () => new ArrayBuffer(8),
+    headers: {get: (name: string) => name === 'Content-Length' && contentLength ? String(size) : null},
+    body: {cancel: jest.fn(), getReader: () => reader},
+    reader: reader,
   }
 }
 
@@ -55,6 +68,7 @@ beforeEach(() => {
   mockWorkers.length = 0
   mockDocuments.length = 0
   mockAnnotations.length = 0
+  mockGetDocument.error = undefined
   global.fetch = jest.fn(async () => response(100)) as any
   source = require('@/functions/pdf-page-source')
 })
@@ -139,8 +153,26 @@ describe('Loading', () => {
     expect(mockDocuments).toHaveLength(0)
   })
 
+  test('given page larger than the limit without Content-Length when loading then its download is stopped at the limit', async () => {
+    const tooLarge = response(source.MAX_PDF_PAGE_BYTES + 1, {contentLength: false})
+    global.fetch = jest.fn(async () => tooLarge) as any
+
+    await expect(loadPage(1)).rejects.toThrow('too large')
+    expect(tooLarge.reader.cancel).toHaveBeenCalled()
+    expect(mockDocuments).toHaveLength(0)
+  })
+
+  test('given document that cannot be opened when loading then the worker is released', async () => {
+    mockGetDocument.error = new Error('broken pdf.js')
+
+    await expect(loadPage(1)).rejects.toThrow('broken pdf.js')
+    jest.advanceTimersByTime(10000)
+
+    expect(mockWorkers[0].destroyed).toBe(true)
+  })
+
   test('given server error when loading then it is rejected without opening a document', async () => {
-    global.fetch = jest.fn(async () => response(0, 500)) as any
+    global.fetch = jest.fn(async () => response(0, {status: 500})) as any
 
     await expect(loadPage(1)).rejects.toThrow('HTTP 500')
     expect(mockDocuments).toHaveLength(0)

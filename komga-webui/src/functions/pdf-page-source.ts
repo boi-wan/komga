@@ -1,7 +1,7 @@
 import {loadPdfJs} from '@/functions/pdfjs'
 import {LoadQueue} from '@/functions/load-queue'
 import type * as PdfJsLib from 'pdfjs-lib'
-import type {PDFPageProxy, PDFWorker} from 'pdfjs-lib'
+import type {PDFDocumentLoadingTask, PDFPageProxy, PDFWorker} from 'pdfjs-lib'
 
 export interface LoadedPdfPage {
   pdfPage: PDFPageProxy,
@@ -43,11 +43,41 @@ function acquireWorker(lib: typeof PdfJsLib): PDFWorker {
 
 function releaseWorker() {
   workerUsers--
-  if (workerUsers === 0)
+  if (workerUsers === 0) {
     workerIdleTimeout = setTimeout(() => {
       worker?.destroy()
       worker = undefined
     }, WORKER_IDLE_MS)
+  }
+}
+
+// Download a single page PDF, rejected once larger than MAX_PDF_PAGE_BYTES.
+// The bytes are counted, as proxies compressing the responses drop their Content-Length.
+async function fetchPdfPage(url: string, signal: AbortSignal): Promise<Uint8Array> {
+  const response = await fetch(url, {credentials: 'include', signal})
+  if (!response.ok) throw new Error(`Could not load PDF page ${url}: HTTP ${response.status}`)
+  const tooLarge = () => new Error(`PDF page ${url} is too large: over ${MAX_PDF_PAGE_BYTES} bytes`)
+  if (Number(response.headers.get('Content-Length')) > MAX_PDF_PAGE_BYTES) {
+    response.body?.cancel()
+    throw tooLarge()
+  }
+  const reader = response.body!!.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (let read = await reader.read(); !read.done; read = await reader.read()) {
+    size += read.value.length
+    if (size > MAX_PDF_PAGE_BYTES) {
+      reader.cancel()
+      throw tooLarge()
+    }
+    chunks.push(read.value)
+  }
+  const data = new Uint8Array(size)
+  chunks.reduce((offset, chunk) => {
+    data.set(chunk, offset)
+    return offset + chunk.length
+  }, 0)
+  return data
 }
 
 // Load the first page of a single page PDF.
@@ -55,24 +85,19 @@ function releaseWorker() {
 export function loadPdfPage(url: string, priority: () => number, signal: AbortSignal): Promise<LoadedPdfPage> {
   return queue.run(async () => {
     // pdf.js is loaded while the page is downloaded
-    const [{lib, assets}, response] = await Promise.all([loadPdfJs(), fetch(url, {credentials: 'include', signal})])
-    if (!response.ok) throw new Error(`Could not load PDF page ${url}: HTTP ${response.status}`)
-    const size = Number(response.headers.get('Content-Length'))
-    if (size > MAX_PDF_PAGE_BYTES) {
-      response.body?.cancel()
-      throw new Error(`PDF page ${url} is too large: ${size} bytes`)
-    }
-    const data = await response.arrayBuffer()
+    const [{lib, assets}, data] = await Promise.all([loadPdfJs(), fetchPdfPage(url, signal)])
 
-    const loadingTask = lib.getDocument({data: data, worker: acquireWorker(lib), ...assets})
+    const worker = acquireWorker(lib)
+    let loadingTask: PDFDocumentLoadingTask | undefined
     let released = false
     const release = () => {
       if (released) return
       released = true
-      loadingTask.destroy()
+      loadingTask?.destroy()
       releaseWorker()
     }
     try {
+      loadingTask = lib.getDocument({data: data, worker: worker, ...assets})
       const pdfPage = await (await loadingTask.promise).getPage(1)
       if (signal.aborted) throw new DOMException('Page not needed anymore', 'AbortError')
       keepTextAnnotationIcons(pdfPage, lib)
