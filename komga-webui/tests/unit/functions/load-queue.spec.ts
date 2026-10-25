@@ -97,6 +97,19 @@ describe('LoadQueue', () => {
     expect(started).toEqual([])
   })
 
+  test('given running task when it fails then its slot goes to the next task', async () => {
+    const queue = new LoadQueue(1)
+    const started: string[] = []
+    const next = deferredTask('next', started)
+
+    const failing = queue.run(() => Promise.reject(new Error('broken')), () => 0)
+    queue.run(next.task, () => 0)
+
+    await expect(failing).rejects.toThrow('broken')
+    await flush()
+    expect(started).toEqual(['next'])
+  })
+
   test('given task when it completes then its result is returned', async () => {
     const queue = new LoadQueue(1)
 

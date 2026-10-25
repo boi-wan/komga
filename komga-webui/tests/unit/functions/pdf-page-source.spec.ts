@@ -33,7 +33,7 @@ jest.mock('@/functions/pdfjs', () => ({
         return document
       },
     },
-    assets: {},
+    documentOptions: {},
   }),
 }))
 

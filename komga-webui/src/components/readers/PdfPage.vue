@@ -13,9 +13,6 @@ import {loadPdfPage} from '@/functions/pdf-page-source'
 import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
 import type {PDFPageView} from 'pdfjs-viewer'
 
-// iOS Safari cannot draw canvases larger than this
-const MAX_CANVAS_PIXELS = 4096 * 4096
-
 // Emits load with the size of the page at scale 1, and fail when pdf.js cannot draw it: the reader shows the page as an image.
 export default Vue.extend({
   name: 'PdfPage',
@@ -26,7 +23,7 @@ export default Vue.extend({
       pageSize: undefined as Size | undefined,
       loadAbort: undefined as AbortController | undefined,
       // releases the loaded page and its document
-      release: undefined as (() => void) | undefined,
+      releasePdfPage: undefined as (() => void) | undefined,
       // pdf.js objects are marked raw, so that Vue does not observe them
       pageView: undefined as PDFPageView | undefined,
     }
@@ -99,41 +96,30 @@ export default Vue.extend({
   },
   methods: {
     async load() {
-      if (this.loadAbort || this.release || this.failed) return
+      if (this.loadAbort || this.releasePdfPage || this.failed) return
       const loadAbort = new AbortController()
       this.loadAbort = loadAbort
       try {
-        const {lib, viewer, pageViewOptions} = await loadPdfJs()
+        const {lib, createPageView} = await loadPdfJs()
         const {pdfPage, release} = await loadPdfPage(this.page.pdfUrl!!, () => this.priority, loadAbort.signal)
         // the page can be unloaded between the end of the loading and this line
         if (loadAbort.signal.aborted) {
           release()
           return
         }
-        this.release = release
+        this.releasePdfPage = release
 
         const viewport = pdfPage.getViewport({scale: lib.PixelsPerInch.PDF_TO_CSS_UNITS})
         this.pageSize = {width: viewport.width, height: viewport.height}
         this.$emit('load', this.pageSize)
 
-        this.pageView = markRaw(new viewer.PDFPageView({
+        this.pageView = markRaw(createPageView({
           container: this.$refs.container as HTMLDivElement,
           id: this.page.number,
+          pdfPage,
+          viewport,
           scale: this.scale!!,
-          defaultViewport: viewport,
-          eventBus: new viewer.EventBus(),
-          annotationMode: lib.AnnotationMode.ENABLE,
-          maxCanvasPixels: MAX_CANVAS_PIXELS,
-          // pages larger than the canvas limit are drawn at the highest resolution allowed:
-          // the sharper detail view drawn over them only exists in the pdf.js viewer
-          enableDetailCanvas: false,
-          // only the links of the file, not the addresses found in its text
-          enableAutoLinking: false,
-          ...pageViewOptions,
         }))
-        // the label of the page for screen readers, translated once as the translations are shared
-        pageViewOptions.l10n.translateOnce(this.pageView.div)
-        this.pageView.setPdfPage(pdfPage)
         await this.draw()
       } catch (e) {
         if (e?.name !== 'AbortError') this.fail(e)
@@ -165,8 +151,8 @@ export default Vue.extend({
       this.pageView?.destroy()
       this.pageView?.div.remove()
       this.pageView = undefined
-      this.release?.()
-      this.release = undefined
+      this.releasePdfPage?.()
+      this.releasePdfPage = undefined
     },
   },
 })

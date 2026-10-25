@@ -385,13 +385,6 @@ export default Vue.extend({
   align-self: flex-start;
 }
 
-/* a page smaller than the screen is centered vertically, like the images */
-.pdf-page-fit {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-}
-
 .img-fit-original {
   width: auto;
   height: auto;
@@ -410,6 +403,13 @@ export default Vue.extend({
 .img-double-fit-screen {
   max-width: 50vw;
   height: 100vh;
+}
+
+/* a page smaller than the screen is centered vertically, like the images */
+.pdf-page-fit {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
 }
 
 .pre-render {

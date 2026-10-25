@@ -20,7 +20,8 @@ export class LoadQueue {
       if (signal?.aborted) return reject(new DOMException('Task aborted while waiting', 'AbortError'))
 
       const onAbort = () => {
-        this.waiting.splice(this.waiting.indexOf(queued), 1)
+        const i = this.waiting.indexOf(queued)
+        if (i >= 0) this.waiting.splice(i, 1)
         reject(new DOMException('Task aborted while waiting', 'AbortError'))
       }
       const queued: QueuedTask = {
@@ -43,10 +44,10 @@ export class LoadQueue {
 
   private next() {
     while (this.running < this.concurrency && this.waiting.length > 0) {
-      const next = this.waiting.reduce((min, t) => t.priority() < min.priority() ? t : min)
-      this.waiting.splice(this.waiting.indexOf(next), 1)
+      const task = this.waiting.reduce((min, t) => t.priority() < min.priority() ? t : min)
+      this.waiting.splice(this.waiting.indexOf(task), 1)
       this.running++
-      next.start()
+      task.start()
     }
   }
 }

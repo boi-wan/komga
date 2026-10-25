@@ -13,48 +13,44 @@ interface MockView {
 
 const mockViews: MockView[] = []
 const mockDraw: { error?: any } = {}
-jest.mock('@/functions/pdfjs', () => ({
-  loadPdfJs: async () => ({
-    lib: {PixelsPerInch: {PDF_TO_CSS_UNITS: 96 / 72}, AnnotationMode: {ENABLE: 2}},
-    viewer: {
-      EventBus: class {
-      },
-      RenderingStates: {INITIAL: 0},
-      PDFPageView: class {
-        div = globalThis.document.createElement('div')
-        renderingState = 0
-        draws = 0
-        destroyed = false
-        options: any
+jest.mock('@/functions/pdfjs', () => {
+  class MockPageView {
+    div = globalThis.document.createElement('div')
+    renderingState = 0
+    draws = 0
+    destroyed = false
+    options: any
 
-        constructor(options: any) {
-          this.options = options
-          options.container.appendChild(this.div)
-          mockViews.push(this)
-        }
+    constructor(options: any) {
+      this.options = options
+      options.container.appendChild(this.div)
+      mockViews.push(this)
+    }
 
-        setPdfPage() {
-        }
+    update({scale}: { scale: number }) {
+      this.options.scale = scale
+      this.renderingState = 0
+    }
 
-        update({scale}: { scale: number }) {
-          this.options.scale = scale
-          this.renderingState = 0
-        }
+    async draw() {
+      this.renderingState = 3
+      this.draws++
+      if (mockDraw.error) throw mockDraw.error
+    }
 
-        async draw() {
-          this.renderingState = 3
-          this.draws++
-          if (mockDraw.error) throw mockDraw.error
-        }
+    destroy() {
+      this.destroyed = true
+    }
+  }
 
-        destroy() {
-          this.destroyed = true
-        }
-      },
-    },
-    pageViewOptions: {l10n: {translateOnce: async () => undefined}, layerProperties: {}},
-  }),
-}))
+  return {
+    loadPdfJs: async () => ({
+      lib: {PixelsPerInch: {PDF_TO_CSS_UNITS: 96 / 72}},
+      viewer: {RenderingStates: {INITIAL: 0}},
+      createPageView: (options: any) => new MockPageView(options),
+    }),
+  }
+})
 jest.mock('@/functions/pdf-page-source', () => ({loadPdfPage: jest.fn()}))
 
 // a US Letter page, with the release of its document

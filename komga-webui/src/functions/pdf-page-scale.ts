@@ -12,13 +12,13 @@ export const DEFAULT_PDF_PAGE_SIZE: Size = {width: 816, height: 1056}
 const ROUNDING_MARGIN = 1 + 1e-7
 
 // scale for each fit, from the scales filling the width and the height of the area
-const FITS: Record<ScaleType | ContinuousScaleType, (width: number, height: number) => number> = {
-  [ScaleType.SCREEN]: (width, height) => Math.min(width, height),
-  [ScaleType.WIDTH]: width => width,
-  [ScaleType.WIDTH_SHRINK_ONLY]: width => Math.min(1, width),
-  [ScaleType.HEIGHT]: (width, height) => height,
+const FITS: Record<ScaleType | ContinuousScaleType, (widthScale: number, heightScale: number) => number> = {
+  [ScaleType.SCREEN]: (widthScale, heightScale) => Math.min(widthScale, heightScale),
+  [ScaleType.WIDTH]: widthScale => widthScale,
+  [ScaleType.WIDTH_SHRINK_ONLY]: widthScale => Math.min(1, widthScale),
+  [ScaleType.HEIGHT]: (widthScale, heightScale) => heightScale,
   [ScaleType.ORIGINAL]: () => 1,
-  [ContinuousScaleType.WIDTH]: width => width,
+  [ContinuousScaleType.WIDTH]: widthScale => widthScale,
   [ContinuousScaleType.ORIGINAL]: () => 1,
 }
 
@@ -26,10 +26,10 @@ const FITS: Record<ScaleType | ContinuousScaleType, (width: number, height: numb
 // page: size of the page at scale 1, in CSS pixels
 // area: space available for the page, in CSS pixels (half the width for double pages)
 export function pdfPageScale(page: Size, area: Size, fit: ScaleType | ContinuousScaleType): number {
-  const width = area.width / page.width * ROUNDING_MARGIN
-  const height = area.height / page.height * ROUNDING_MARGIN
+  const widthScale = area.width / page.width * ROUNDING_MARGIN
+  const heightScale = area.height / page.height * ROUNDING_MARGIN
   // unknown values are displayed at original size, like the images
-  return FITS[fit]?.(width, height) ?? 1
+  return FITS[fit]?.(widthScale, heightScale) ?? 1
 }
 
 // Size at scale 1 of a PDF page not loaded yet, in CSS pixels: the ratio of its server image,

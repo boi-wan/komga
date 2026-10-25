@@ -85,7 +85,7 @@ async function fetchPdfPage(url: string, signal: AbortSignal): Promise<Uint8Arra
 export function loadPdfPage(url: string, priority: () => number, signal: AbortSignal): Promise<LoadedPdfPage> {
   return queue.run(async () => {
     // pdf.js is loaded while the page is downloaded
-    const [{lib, assets}, data] = await Promise.all([loadPdfJs(), fetchPdfPage(url, signal)])
+    const [{lib, documentOptions}, data] = await Promise.all([loadPdfJs(), fetchPdfPage(url, signal)])
 
     const worker = acquireWorker(lib)
     let loadingTask: PDFDocumentLoadingTask | undefined
@@ -97,7 +97,7 @@ export function loadPdfPage(url: string, priority: () => number, signal: AbortSi
       releaseWorker()
     }
     try {
-      loadingTask = lib.getDocument({data: data, worker: worker, ...assets})
+      loadingTask = lib.getDocument({data: data, worker: worker, ...documentOptions})
       const pdfPage = await (await loadingTask.promise).getPage(1)
       if (signal.aborted) throw new DOMException('Page not needed anymore', 'AbortError')
       keepTextAnnotationIcons(pdfPage, lib)

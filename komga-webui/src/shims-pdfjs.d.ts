@@ -60,6 +60,7 @@ declare module 'pdfjs-lib' {
     standardFontDataUrl: string,
     wasmUrl: string,
     iccUrl: string,
+    enableXfa: boolean,
   }): PDFDocumentLoadingTask
 }
 
