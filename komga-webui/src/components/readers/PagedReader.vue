@@ -369,7 +369,7 @@ export default Vue.extend({
   align-self: flex-start;
 }
 
-/* like the images, which are always as high as the screen and center their content */
+/* a page smaller than the screen is centered vertically, like the images */
 .pdf-page-fit {
   min-height: 100vh;
   display: flex;

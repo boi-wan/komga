@@ -1,8 +1,11 @@
 // vue.config.js
+const path = require('path')
 
 // pdf.js worker and runtime assets (cmaps, fonts, wasm decoders, color profiles) are copied as-is,
 // under a versioned folder so that a pdf.js upgrade never mixes with cached files
-const pdfjsAssets = `js/pdfjs-${require('pdfjs-dist/package.json').version}`
+const pdfjsDist = path.dirname(require.resolve('pdfjs-dist/package.json'))
+// also read by src/functions/pdfjs.ts
+process.env.VUE_APP_PDFJS_ASSETS = `js/pdfjs-${require('pdfjs-dist/package.json').version}/`
 
 module.exports = {
   // with './' the dev server cannot load any arbitrary path
@@ -42,8 +45,9 @@ module.exports = {
           {from: 'iccs', to: 'iccs/'},
         ].map(pattern => ({
           ...pattern,
-          from: `node_modules/pdfjs-dist/${pattern.from}`,
-          to: `${pdfjsAssets}/${pattern.to}`,
+          from: `${pdfjsDist}/${pattern.from}`,
+          to: `${process.env.VUE_APP_PDFJS_ASSETS}${pattern.to}`,
+          // the worker is already minified: terser skips it instead of minifying it again
           info: {
             minimized: true,
           },

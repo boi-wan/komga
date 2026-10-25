@@ -1,4 +1,4 @@
-import {pdfPageScale} from '@/functions/pdf-page-scale'
+import {DEFAULT_PDF_PAGE_SIZE, estimatePdfPageSize, pdfPageBox, pdfPageScale} from '@/functions/pdf-page-scale'
 import {ContinuousScaleType, ScaleType} from '@/types/enum-reader'
 
 // A4 portrait at scale 1 (595x842 pt as CSS pixels)
@@ -66,5 +66,33 @@ describe('Rounding', () => {
       const scale = pdfPageScale(letter, {width, height: 900}, ContinuousScaleType.WIDTH)
       expect(Math.floor(scale * 96 / 72 * 612)).toEqual(width)
     }
+  })
+
+  test('given page when computing its box then the box is rounded down like the pages drawn by pdf.js', () => {
+    expect(pdfPageBox(page, portraitArea, ContinuousScaleType.WIDTH)).toEqual({width: 390, height: Math.floor(1123 * 390 / 794)})
+    expect(pdfPageBox(page, portraitArea, ContinuousScaleType.ORIGINAL)).toEqual(page)
+  })
+})
+
+describe('Estimated size', () => {
+  // server images of PDF pages have their short side at 3200 pixels
+  const portraitImage = {width: 3200, height: 4528}
+  const landscapeImage = {width: 4528, height: 3200}
+
+  test('given no page loaded when estimating then the page has the ratio of its image and the short side of US Letter', () => {
+    expect(estimatePdfPageSize(portraitImage)).toEqual({width: DEFAULT_PDF_PAGE_SIZE.width, height: 4528 * 816 / 3200})
+  })
+
+  test('given a page loaded when estimating then the page has the ratio of its image and the short side of the loaded page', () => {
+    expect(estimatePdfPageSize(portraitImage, page)).toEqual({width: 794, height: 4528 * 794 / 3200})
+  })
+
+  test('given landscape image when estimating then its height is the short side', () => {
+    expect(estimatePdfPageSize(landscapeImage, page)).toEqual({width: 4528 * 794 / 3200, height: 794})
+  })
+
+  test('given image without size when estimating then the page has the size of the reference', () => {
+    expect(estimatePdfPageSize({}, page)).toEqual(page)
+    expect(estimatePdfPageSize({width: 0, height: 0})).toEqual(DEFAULT_PDF_PAGE_SIZE)
   })
 })

@@ -1,10 +1,10 @@
 // pdf.js ships its own types, but they need TypeScript >= 5.7 (generic typed arrays, MapIterator).
 // The modules are imported through webpack aliases (see vue.config.js), so that TypeScript uses these declarations.
-// Only the subset of the API used by the webui is declared here.
+// Only the subset of the API used by the webui is declared here, against pdfjs-dist 6.4.299 (pinned in package.json).
+// On an upgrade, check these declarations, the files copied by vue.config.js, the pdfjsLib global in functions/pdfjs.ts,
+// and the pdf_viewer.css rules overridden in PdfPage.vue.
 
 declare module 'pdfjs-lib' {
-  export const version: string
-
   export const GlobalWorkerOptions: {
     workerSrc: string,
   }
@@ -14,27 +14,19 @@ declare module 'pdfjs-lib' {
   }
 
   export const AnnotationMode: {
-    DISABLE: number,
     ENABLE: number,
-    ENABLE_FORMS: number,
-    ENABLE_STORAGE: number,
   }
 
   export interface PageViewport {
     width: number,
     height: number,
-    scale: number,
   }
 
   export interface PDFPageProxy {
     getViewport(params: { scale: number }): PageViewport
-
-    cleanup(): boolean
   }
 
   export interface PDFDocumentProxy {
-    numPages: number
-
     getPage(pageNumber: number): Promise<PDFPageProxy>
   }
 
@@ -45,20 +37,16 @@ declare module 'pdfjs-lib' {
   }
 
   export class PDFWorker {
-    constructor(params?: { name?: string })
-
     destroy(): void
   }
 
   export function getDocument(params: {
-    data?: ArrayBuffer | Uint8Array,
-    url?: string,
-    withCredentials?: boolean,
-    worker?: PDFWorker,
-    cMapUrl?: string,
-    standardFontDataUrl?: string,
-    wasmUrl?: string,
-    iccUrl?: string,
+    data: ArrayBuffer,
+    worker: PDFWorker,
+    cMapUrl: string,
+    standardFontDataUrl: string,
+    wasmUrl: string,
+    iccUrl: string,
   }): PDFDocumentLoadingTask
 }
 
@@ -68,11 +56,32 @@ declare module 'pdfjs-viewer' {
   export class EventBus {
   }
 
+  export class GenericL10n {
+    translateOnce(element: HTMLElement): Promise<void>
+  }
+
+  export const LinkTarget: {
+    BLANK: number,
+  }
+
+  export class SimpleLinkService {
+    constructor(options: { externalLinkTarget: number })
+  }
+
+  // services of the annotation layer, all disabled but the links
+  export interface LayerProperties {
+    annotationEditorUIManager: null,
+    annotationStorage: null,
+    downloadManager: null,
+    enableScripting: false,
+    fieldObjectsPromise: null,
+    findController: null,
+    hasJSActionsPromise: null,
+    linkService: SimpleLinkService,
+  }
+
   export const RenderingStates: {
     INITIAL: number,
-    RUNNING: number,
-    PAUSED: number,
-    FINISHED: number,
   }
 
   export class PDFPageView {
@@ -85,9 +94,12 @@ declare module 'pdfjs-viewer' {
       scale: number,
       defaultViewport: PageViewport,
       eventBus: EventBus,
-      textLayerMode?: number,
-      annotationMode?: number,
-      maxCanvasPixels?: number,
+      annotationMode: number,
+      maxCanvasPixels: number,
+      enableDetailCanvas: boolean,
+      enableAutoLinking: boolean,
+      l10n: GenericL10n,
+      layerProperties: LayerProperties,
     })
 
     setPdfPage(pdfPage: PDFPageProxy): void

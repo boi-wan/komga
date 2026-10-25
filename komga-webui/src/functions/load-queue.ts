@@ -1,0 +1,52 @@
+interface QueuedTask {
+  priority: () => number,
+  start: () => void,
+}
+
+// Runs a limited number of tasks at once, picking the waiting task with the lowest priority value first.
+// Priorities are evaluated when a task is picked, so they can change while waiting.
+export class LoadQueue {
+  private readonly concurrency: number
+  private readonly waiting: QueuedTask[] = []
+  private running = 0
+
+  constructor(concurrency: number) {
+    this.concurrency = concurrency
+  }
+
+  // a task aborted while waiting never starts, and its promise is rejected right away
+  run<T>(task: () => Promise<T>, priority: () => number, signal?: AbortSignal): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      if (signal?.aborted) return reject(new DOMException('Task aborted while waiting', 'AbortError'))
+
+      const onAbort = () => {
+        this.waiting.splice(this.waiting.indexOf(queued), 1)
+        reject(new DOMException('Task aborted while waiting', 'AbortError'))
+      }
+      const queued: QueuedTask = {
+        priority,
+        start: () => {
+          signal?.removeEventListener('abort', onAbort)
+          task()
+            .then(resolve, reject)
+            .finally(() => {
+              this.running--
+              this.next()
+            })
+        },
+      }
+      signal?.addEventListener('abort', onAbort, {once: true})
+      this.waiting.push(queued)
+      this.next()
+    })
+  }
+
+  private next() {
+    while (this.running < this.concurrency && this.waiting.length > 0) {
+      const next = this.waiting.reduce((min, t) => t.priority() < min.priority() ? t : min)
+      this.waiting.splice(this.waiting.indexOf(next), 1)
+      this.running++
+      next.start()
+    }
+  }
+}

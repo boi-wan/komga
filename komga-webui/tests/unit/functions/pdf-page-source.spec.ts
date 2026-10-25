@@ -1,82 +1,145 @@
-import {LoadQueue} from '@/functions/pdf-page-source'
+import type * as PdfPageSource from '@/functions/pdf-page-source'
 
-// a task that only completes when resolved by the test
-function deferredTask(name: string, started: string[]) {
-  let done: () => void = () => {}
-  const task = () => {
-    started.push(name)
-    return new Promise<string>(resolve => done = () => resolve(name))
+// fake pdf.js, recording the workers and documents created and destroyed
+const mockWorkers: { destroyed: boolean }[] = []
+const mockDocuments: { destroyed: boolean }[] = []
+jest.mock('@/functions/pdfjs', () => ({
+  loadPdfJs: async () => ({
+    lib: {
+      PDFWorker: class {
+        destroyed = false
+
+        constructor() {
+          mockWorkers.push(this)
+        }
+
+        destroy() {
+          this.destroyed = true
+        }
+      },
+      getDocument: () => {
+        const document = {
+          destroyed: false,
+          promise: Promise.resolve({getPage: async () => ({})}),
+          destroy: async () => {
+            document.destroyed = true
+          },
+        }
+        mockDocuments.push(document)
+        return document
+      },
+    },
+    assets: {},
+  }),
+}))
+
+function response(size: number, status = 200) {
+  return {
+    ok: status === 200,
+    status: status,
+    headers: {get: (name: string) => name === 'Content-Length' ? String(size) : null},
+    body: {cancel: jest.fn()},
+    arrayBuffer: async () => new ArrayBuffer(8),
   }
-  return {task, complete: () => done()}
 }
 
-const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+let source: typeof PdfPageSource
+const loadPage = (n: number, signal = new AbortController().signal) => source.loadPdfPage(`/pages/${n}/raw`, () => 0, signal)
 
-describe('LoadQueue', () => {
-  test('given more tasks than the concurrency when running then only that many tasks start', async () => {
-    const queue = new LoadQueue(2)
-    const started: string[] = []
-    const tasks = ['a', 'b', 'c'].map(n => deferredTask(n, started))
+beforeEach(() => {
+  // the worker is shared by the module: each test gets a new one
+  jest.resetModules()
+  jest.useFakeTimers()
+  mockWorkers.length = 0
+  mockDocuments.length = 0
+  global.fetch = jest.fn(async () => response(100)) as any
+  source = require('@/functions/pdf-page-source')
+})
 
-    tasks.forEach(t => queue.run(t.task, () => 0))
-    await flush()
+afterEach(() => {
+  jest.useRealTimers()
+})
 
-    expect(started).toEqual(['a', 'b'])
+describe('Worker', () => {
+  test('given two pages loaded when one is released then its document is destroyed and the worker is kept', async () => {
+    const [first] = await Promise.all([loadPage(1), loadPage(2)])
 
-    tasks[0].complete()
-    await flush()
+    first.release()
+    jest.advanceTimersByTime(60000)
 
-    expect(started).toEqual(['a', 'b', 'c'])
+    expect(mockWorkers).toHaveLength(1)
+    expect(mockWorkers[0].destroyed).toBe(false)
+    expect(mockDocuments.map(d => d.destroyed)).toEqual([true, false])
   })
 
-  test('given waiting tasks when a slot frees then the lowest priority value starts first', async () => {
-    const queue = new LoadQueue(1)
-    const started: string[] = []
-    const first = deferredTask('first', started)
-    queue.run(first.task, () => 0)
-    queue.run(deferredTask('far', started).task, () => 3)
-    queue.run(deferredTask('near', started).task, () => 1)
+  test('given every page released when idle for 10 seconds then the worker is destroyed', async () => {
+    const page = await loadPage(1)
 
-    first.complete()
-    await flush()
+    page.release()
+    jest.advanceTimersByTime(9999)
+    expect(mockWorkers[0].destroyed).toBe(false)
 
-    expect(started).toEqual(['first', 'near'])
+    jest.advanceTimersByTime(1)
+    expect(mockWorkers[0].destroyed).toBe(true)
   })
 
-  test('given waiting task whose priority changes when a slot frees then the current priority is used', async () => {
-    const queue = new LoadQueue(1)
-    const started: string[] = []
-    const first = deferredTask('first', started)
-    let distanceOfB = 5
-    queue.run(first.task, () => 0)
-    queue.run(deferredTask('a', started).task, () => 2)
-    queue.run(deferredTask('b', started).task, () => distanceOfB)
+  test('given every page released when a page loads before 10 seconds then the worker is reused', async () => {
+    (await loadPage(1)).release()
+    jest.advanceTimersByTime(5000)
 
-    distanceOfB = 1
-    first.complete()
-    await flush()
+    await loadPage(2)
+    jest.advanceTimersByTime(60000)
 
-    expect(started).toEqual(['first', 'b'])
+    expect(mockWorkers).toHaveLength(1)
+    expect(mockWorkers[0].destroyed).toBe(false)
   })
 
-  test('given waiting task when aborted then it is rejected and never started', async () => {
-    const queue = new LoadQueue(1)
-    const started: string[] = []
-    const first = deferredTask('first', started)
-    const controller = new AbortController()
-    queue.run(first.task, () => 0)
-    const aborted = queue.run(deferredTask('aborted', started).task, () => 1, controller.signal)
+  test('given worker destroyed when a page loads then a new worker is created', async () => {
+    (await loadPage(1)).release()
+    jest.advanceTimersByTime(10000)
 
-    controller.abort()
-    first.complete()
+    await loadPage(2)
 
-    await expect(aborted).rejects.toHaveProperty('name', 'AbortError')
-    expect(started).toEqual(['first'])
+    expect(mockWorkers.map(w => w.destroyed)).toEqual([true, false])
   })
 
-  test('given task when it completes then its result is returned', async () => {
-    const queue = new LoadQueue(1)
+  test('given page released twice when another page is still loaded then the worker is kept', async () => {
+    const [first] = await Promise.all([loadPage(1), loadPage(2)])
 
-    await expect(queue.run(() => Promise.resolve(42), () => 0)).resolves.toEqual(42)
+    first.release()
+    first.release()
+    jest.advanceTimersByTime(60000)
+
+    expect(mockWorkers[0].destroyed).toBe(false)
+  })
+})
+
+describe('Loading', () => {
+  test('given page not needed anymore when its document is opened then it is rejected, and its document and worker released', async () => {
+    const abort = new AbortController()
+    const loading = loadPage(1, abort.signal)
+
+    abort.abort()
+
+    await expect(loading).rejects.toHaveProperty('name', 'AbortError')
+    expect(mockDocuments[0].destroyed).toBe(true)
+    jest.advanceTimersByTime(10000)
+    expect(mockWorkers[0].destroyed).toBe(true)
+  })
+
+  test('given page larger than the limit when loading then it is rejected without opening a document', async () => {
+    const tooLarge = response(source.MAX_PDF_PAGE_BYTES + 1)
+    global.fetch = jest.fn(async () => tooLarge) as any
+
+    await expect(loadPage(1)).rejects.toThrow('too large')
+    expect(tooLarge.body.cancel).toHaveBeenCalled()
+    expect(mockDocuments).toHaveLength(0)
+  })
+
+  test('given server error when loading then it is rejected without opening a document', async () => {
+    global.fetch = jest.fn(async () => response(0, 500)) as any
+
+    await expect(loadPage(1)).rejects.toThrow('HTTP 500')
+    expect(mockDocuments).toHaveLength(0)
   })
 })

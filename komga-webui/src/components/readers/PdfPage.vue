@@ -17,9 +17,8 @@ import Vue, {markRaw, PropType} from 'vue'
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {ContinuousScaleType, ScaleType} from '@/types/enum-reader'
 import {loadPdfJs} from '@/functions/pdfjs'
-import {acquirePdfWorker, loadPdfPage, releasePdfWorker} from '@/functions/pdf-page-source'
+import {loadPdfPage} from '@/functions/pdf-page-source'
 import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
-import type {PDFDocumentLoadingTask} from 'pdfjs-lib'
 import type {PDFPageView} from 'pdfjs-viewer'
 
 // iOS Safari cannot draw canvases larger than this
@@ -32,9 +31,10 @@ export default Vue.extend({
       failed: false,
       // size of the page at scale 1, known once loaded
       pageSize: undefined as Size | undefined,
-      loading: undefined as AbortController | undefined,
+      loadAbort: undefined as AbortController | undefined,
+      // releases the loaded page and its document
+      release: undefined as (() => void) | undefined,
       // pdf.js objects are marked raw, so that Vue does not observe them
-      loadingTask: undefined as PDFDocumentLoadingTask | undefined,
       pageView: undefined as PDFPageView | undefined,
     }
   },
@@ -67,15 +67,11 @@ export default Vue.extend({
       default: 0,
     },
   },
-  created() {
-    acquirePdfWorker()
-  },
   mounted() {
     if (this.active) this.load()
   },
   beforeDestroy() {
     this.unload()
-    releasePdfWorker()
   },
   watch: {
     'page.pdfUrl'() {
@@ -105,17 +101,18 @@ export default Vue.extend({
   },
   methods: {
     async load() {
-      if (this.loading || this.loadingTask || this.failed) return
-      const loading = new AbortController()
-      this.loading = loading
+      if (this.loadAbort || this.release || this.failed) return
+      const loadAbort = new AbortController()
+      this.loadAbort = loadAbort
       try {
-        const {lib, viewer} = await loadPdfJs()
-        const {loadingTask, pdfPage} = await loadPdfPage(this.page.pdfUrl!!, () => this.priority, loading.signal)
-        if (loading.signal.aborted) {
-          loadingTask.destroy()
+        const {lib, viewer, pageViewOptions} = await loadPdfJs()
+        const {pdfPage, release} = await loadPdfPage(this.page.pdfUrl!!, () => this.priority, loadAbort.signal)
+        // the page can be unloaded between the end of the loading and this line
+        if (loadAbort.signal.aborted) {
+          release()
           return
         }
-        this.loadingTask = markRaw(loadingTask)
+        this.release = release
 
         const viewport = pdfPage.getViewport({scale: lib.PixelsPerInch.PDF_TO_CSS_UNITS})
         this.pageSize = {width: viewport.width, height: viewport.height}
@@ -129,40 +126,61 @@ export default Vue.extend({
           eventBus: new viewer.EventBus(),
           annotationMode: lib.AnnotationMode.ENABLE,
           maxCanvasPixels: MAX_CANVAS_PIXELS,
+          // pages larger than the canvas limit are drawn at the highest resolution allowed:
+          // the sharper detail view drawn over them only exists in the pdf.js viewer
+          enableDetailCanvas: false,
+          // only the links of the file, not the addresses found in its text
+          enableAutoLinking: false,
+          ...pageViewOptions,
         }))
+        // the label of the page for screen readers, translated once as the translations are shared
+        pageViewOptions.l10n.translateOnce(this.pageView.div)
         this.pageView.setPdfPage(pdfPage)
         await this.draw()
       } catch (e) {
-        if (e?.name === 'AbortError') return
-        this.$warn('[PdfPage]', `page:${this.page.number}`, e)
-        this.unload()
-        this.failed = true
+        this.fail(e)
       } finally {
-        if (this.loading === loading) this.loading = undefined
+        if (this.loadAbort === loadAbort) this.loadAbort = undefined
       }
     },
     async draw() {
       const {viewer} = await loadPdfJs()
-      if (this.pageView?.renderingState !== viewer.RenderingStates.INITIAL) return
+      const pageView = this.pageView
+      if (pageView?.renderingState !== viewer.RenderingStates.INITIAL) return
       try {
-        await this.pageView.draw()
+        await pageView.draw()
       } catch (e) {
         // a new scale or an unload cancels the drawing in progress
-        if (e?.name !== 'RenderingCancelledException') throw e
+        if (e?.name !== 'RenderingCancelledException' && this.pageView === pageView) this.fail(e)
       }
     },
+    // the page is shown as a server image instead
+    fail(e: any) {
+      if (e?.name === 'AbortError') return
+      this.$warn('[PdfPage]', `page:${this.page.number}`, e)
+      this.unload()
+      this.failed = true
+    },
     unload() {
-      this.loading?.abort()
-      this.loading = undefined
-      // a page view keeps its page and layers even when destroyed, so it is dropped (the reader keeps the size of the page)
+      this.loadAbort?.abort()
+      this.loadAbort = undefined
+      // a page view keeps its page and layers even when destroyed, so it is dropped (a page loaded again gets a new one)
       this.pageView?.destroy()
       this.pageView?.div.remove()
       this.pageView = undefined
-      this.loadingTask?.destroy()
-      this.loadingTask = undefined
+      this.release?.()
+      this.release = undefined
     },
   },
 })
 </script>
 
 <style src="pdfjs-dist/legacy/web/pdf_viewer.css"/>
+
+<style>
+/* pdf_viewer.css makes the whole app follow the color scheme of the system (native scrollbars and controls),
+   while Komga applies its own theme */
+:root {
+  color-scheme: normal;
+}
+</style>

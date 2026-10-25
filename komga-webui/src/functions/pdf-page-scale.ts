@@ -5,8 +5,22 @@ export interface Size {
   height: number,
 }
 
+// US Letter at scale 1, in CSS pixels: the size of PDF pages until one is loaded
+export const DEFAULT_PDF_PAGE_SIZE: Size = {width: 816, height: 1056}
+
 // pdf.js rounds the size of pages down: fitting scales are slightly larger, so that floating-point errors never lose a pixel
 const ROUNDING_MARGIN = 1 + 1e-7
+
+// scale for each fit, from the scales filling the width and the height of the area
+const FITS: Record<ScaleType | ContinuousScaleType, (width: number, height: number) => number> = {
+  [ScaleType.SCREEN]: (width, height) => Math.min(width, height),
+  [ScaleType.WIDTH]: width => width,
+  [ScaleType.WIDTH_SHRINK_ONLY]: width => Math.min(1, width),
+  [ScaleType.HEIGHT]: (width, height) => height,
+  [ScaleType.ORIGINAL]: () => 1,
+  [ContinuousScaleType.WIDTH]: width => width,
+  [ContinuousScaleType.ORIGINAL]: () => 1,
+}
 
 // Scale of a PDF page, so that it is displayed like the images of PagedReader and ContinuousReader.
 // page: size of the page at scale 1, in CSS pixels
@@ -14,17 +28,22 @@ const ROUNDING_MARGIN = 1 + 1e-7
 export function pdfPageScale(page: Size, area: Size, fit: ScaleType | ContinuousScaleType): number {
   const width = area.width / page.width * ROUNDING_MARGIN
   const height = area.height / page.height * ROUNDING_MARGIN
-  switch (fit) {
-    case ScaleType.SCREEN:
-      return Math.min(width, height)
-    case ScaleType.WIDTH:
-    case ContinuousScaleType.WIDTH:
-      return width
-    case ScaleType.WIDTH_SHRINK_ONLY:
-      return Math.min(1, width)
-    case ScaleType.HEIGHT:
-      return height
-    default:
-      return 1
-  }
+  // unknown values are displayed at original size, like the images
+  return FITS[fit]?.(width, height) ?? 1
+}
+
+// Size at scale 1 of a PDF page not loaded yet, in CSS pixels: the ratio of its server image,
+// and the short side of a page of the same book already loaded (pages of a book usually share their short side).
+// image: size of the server image, unknown for some books
+// reference: size at scale 1 of a page already loaded
+export function estimatePdfPageSize(image: Partial<Size>, reference: Size = DEFAULT_PDF_PAGE_SIZE): Size {
+  if (!image.width || !image.height) return reference
+  const imageToPdfScale = Math.min(reference.width, reference.height) / Math.min(image.width, image.height)
+  return {width: image.width * imageToPdfScale, height: image.height * imageToPdfScale}
+}
+
+// Size of a PDF page drawn by pdf.js, in CSS pixels, rounded down like pdf.js does.
+export function pdfPageBox(page: Size, area: Size, fit: ScaleType | ContinuousScaleType): Size {
+  const scale = pdfPageScale(page, area, fit)
+  return {width: Math.floor(page.width * scale), height: Math.floor(page.height * scale)}
 }
