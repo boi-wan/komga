@@ -82,6 +82,8 @@ export default Vue.extend({
       seen: [] as boolean[],
       // pages intersecting the screen
       visiblePages: {} as Record<number, boolean>,
+      // pages entering (true) or leaving (false) the screen, not applied to visiblePages yet
+      visibilityChanges: new Map<number, boolean>(),
       // size at scale 1 of the PDF pages loaded so far, in CSS pixels
       pdfPageSizes: {} as Record<number, Size>,
       // size at scale 1 of the first PDF page loaded, used to estimate the size of the others
@@ -124,6 +126,7 @@ export default Vue.extend({
       handler(val) {
         this.seen = new Array(val.length).fill(false)
         this.visiblePages = {}
+        this.visibilityChanges.clear()
         this.pdfPageSizes = {}
         this.pdfReferenceSize = undefined
         this.failedPdfPages = {}
@@ -169,14 +172,14 @@ export default Vue.extend({
     totalSidePadding(): number {
       return this.sidePadding * 2
     },
-    // width available for a page, without the side padding (calcWidth computes the same for images)
+    // width available for a page, without the side padding
     availableWidth(): number {
       return this.$vuetify.breakpoint.width - (this.$vuetify.breakpoint.width * this.totalSidePadding) / 100
     },
     // first and last pages on the screen, or the current page until known
     visibleRange(): { first: number, last: number } {
       const visible = Object.keys(this.visiblePages).map(Number)
-      if (visible.length === 0) return {first: this.currentPage, last: this.currentPage}
+      if (visible.length === 0) return {first: this.page, last: this.page}
       return {first: Math.min(...visible), last: Math.max(...visible)}
     },
   },
@@ -203,12 +206,20 @@ export default Vue.extend({
       const entry = entries[entries.length - 1]
       const page = pageNumberOf(entry.target)
       if (entry.isIntersecting) {
-        this.$set(this.visiblePages, page, true)
         this.seen.splice(page - 1, 1, true)
         this.setCurrentPage(page)
-      } else {
-        this.$delete(this.visiblePages, page)
       }
+      // On a jump, the observers report the pages entering and leaving the screen one by one, each followed by a render:
+      // the changes are applied together, so that the pages between the two positions are never mounted.
+      if (this.visibilityChanges.size === 0) setTimeout(this.applyVisibilityChanges)
+      this.visibilityChanges.set(page, entry.isIntersecting)
+    },
+    applyVisibilityChanges() {
+      this.visibilityChanges.forEach((visible, page) => {
+        if (visible) this.$set(this.visiblePages, page, true)
+        else this.$delete(this.visiblePages, page)
+      })
+      this.visibilityChanges.clear()
     },
     setCurrentPage(page: number) {
       this.currentPage = page
@@ -221,7 +232,7 @@ export default Vue.extend({
       switch (this.scale) {
         case ContinuousScaleType.WIDTH:
           if (page.height && page.width)
-            return page.height / (page.width / (this.$vuetify.breakpoint.width - (this.$vuetify.breakpoint.width * this.totalSidePadding) / 100))
+            return page.height / (page.width / this.availableWidth)
           return undefined
         case ContinuousScaleType.ORIGINAL:
           return page.height || undefined
@@ -232,7 +243,7 @@ export default Vue.extend({
     calcWidth(page: PageDtoWithUrl): number | undefined {
       switch (this.scale) {
         case ContinuousScaleType.WIDTH:
-          return this.$vuetify.breakpoint.width - (this.$vuetify.breakpoint.width * this.totalSidePadding) / 100
+          return this.availableWidth
         case ContinuousScaleType.ORIGINAL:
           return page.width || undefined
         default:
@@ -252,19 +263,25 @@ export default Vue.extend({
         this.$set(this.pdfPageSizes, page.number, size)
       })
     },
-    // Resizes pages: the page at the top of the screen stays in place,
-    // and becomes the current page if the current one is pushed off the screen.
+    // resizes pages: the page at the top of the screen stays in place
     keepTopPageInPlace(resize: () => void) {
       const top = [...this.$el.querySelectorAll('[id^=page]')].find(e => e.getBoundingClientRect().bottom > 0)
-      const topBefore = top?.getBoundingClientRect().top
+      if (!top) {
+        resize()
+        return
+      }
+      const topBefore = top.getBoundingClientRect().top
       resize()
       this.$nextTick(() => {
-        if (!top || topBefore === undefined) return
         const shift = top.getBoundingClientRect().top - topBefore
         if (shift) window.scrollBy(0, shift)
-        const current = document.getElementById(`page${this.currentPage}`)?.getBoundingClientRect()
-        if (current && (current.bottom <= 0 || current.top >= window.innerHeight)) this.setCurrentPage(pageNumberOf(top))
+        this.keepCurrentPageOnScreen(top)
       })
+    },
+    // a current page pushed off the screen is replaced by the page at the top
+    keepCurrentPageOnScreen(top: Element) {
+      const current = document.getElementById(`page${this.currentPage}`)?.getBoundingClientRect()
+      if (current && (current.bottom <= 0 || current.top >= window.innerHeight)) this.setCurrentPage(pageNumberOf(top))
     },
     onPdfPageFail(page: PageDtoWithUrl) {
       this.keepTopPageInPlace(() => this.$set(this.failedPdfPages, page.number, true))
