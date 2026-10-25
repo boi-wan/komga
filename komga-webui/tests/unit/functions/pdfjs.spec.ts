@@ -6,7 +6,7 @@ const mockLinkServices: any[] = []
 const mockImport = {fail: false}
 jest.mock('pdfjs-lib', () => {
   if (mockImport.fail) throw new Error('chunk not loaded')
-  return {GlobalWorkerOptions: {}, AnnotationMode: {ENABLE: 2}}
+  return {GlobalWorkerOptions: {}, AnnotationMode: {ENABLE: 2}, AnnotationType: {TEXT: 1}}
 }, {virtual: true})
 jest.mock('pdfjs-viewer', () => ({
   EventBus: class {
@@ -45,9 +45,9 @@ beforeEach(() => {
   pdfjs = require('@/functions/pdfjs')
 })
 
-async function createPageView() {
+async function createPageView(pdfPage: any = {getAnnotations: async () => []}) {
   const {createPageView} = await pdfjs.loadPdfJs()
-  createPageView({container: document.createElement('div'), id: 1, pdfPage: {} as any, viewport: {width: 816, height: 1056}, scale: 1})
+  createPageView({container: document.createElement('div'), id: 1, pdfPage, viewport: {width: 816, height: 1056}, scale: 1})
   return mockPageViews[0]
 }
 
@@ -87,6 +87,28 @@ describe('Page views', () => {
     userAgent.mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1')
 
     expect((await createPageView()).maxCanvasPixels).toEqual(5242880)
+  })
+})
+
+describe('Text annotations', () => {
+  // a page with these annotations, as pdf.js reads them from the file
+  const pageWith = (...annotations: object[]) => ({getAnnotations: async () => annotations})
+
+  test('given text annotation with an icon of pdf.js when its page is shown then its icon is kept', async () => {
+    const page = pageWith({annotationType: 1, name: 'Comment'}, {annotationType: 1, name: 'NewParagraph'})
+
+    await createPageView(page)
+
+    expect((await page.getAnnotations()).map((a: any) => a.name)).toEqual(['Comment', 'NewParagraph'])
+  })
+
+  test('given text annotation whose icon name is a path when its page is shown then it gets the note icon', async () => {
+    const link = {annotationType: 2, name: 'x/../../api/logout?'}
+    const page = pageWith({annotationType: 1, name: 'x/../../api/logout?'}, {annotationType: 1}, link)
+
+    await createPageView(page)
+
+    expect(await page.getAnnotations()).toEqual([{annotationType: 1, name: 'Note'}, {annotationType: 1, name: 'Note'}, link])
   })
 })
 

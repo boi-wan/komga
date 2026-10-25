@@ -28,6 +28,21 @@ export interface PdfJs {
   createPageView(options: PageViewOptions): PDFPageView,
 }
 
+// icons of the text annotations, among the annotation icons of pdf.js copied by vue.config.js
+export const TEXT_ANNOTATION_ICONS = ['check', 'comment', 'help', 'insert', 'key', 'newparagraph', 'noicon', 'note', 'paragraph']
+
+// pdf.js shows the icon of a text annotation from `${imageResourcesPath}annotation-${name}.svg`, with the name read from
+// the file (TextAnnotationElement), and its annotation layer gets the annotations from pdfPage.getAnnotations
+// (AnnotationLayerBuilder): any other name, like a path, would make the browser request another url of Komga
+// (e.g. /api/logout). tests/unit/functions/pdfjs-internals.spec.ts checks that pdf.js still works this way.
+function keepTextAnnotationIcons(pdfPage: PDFPageProxy, textType: number) {
+  const getAnnotations = pdfPage.getAnnotations.bind(pdfPage)
+  pdfPage.getAnnotations = async params => (await getAnnotations(params)).map(annotation =>
+    annotation.annotationType === textType && !TEXT_ANNOTATION_ICONS.includes(String(annotation.name).toLowerCase())
+      ? {...annotation, name: 'Note'}
+      : annotation)
+}
+
 // Canvases larger than this are drawn at a lower resolution: the limit of the pdf.js viewer on phones and tablets,
 // 16 MP (64 MB per page drawn) elsewhere, where the pdf.js viewer allows 32 MP.
 function maxCanvasPixels(): number {
@@ -106,6 +121,7 @@ async function importPdfJs(): Promise<PdfJs> {
       })
       // the label of the page for screen readers, translated once as the translations are shared
       l10n.translateOnce(pageView.div)
+      keepTextAnnotationIcons(pdfPage, lib.AnnotationType.TEXT)
       pageView.setPdfPage(pdfPage)
       return pageView
     },

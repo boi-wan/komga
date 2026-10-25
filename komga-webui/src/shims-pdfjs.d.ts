@@ -2,7 +2,8 @@
 // The modules are imported through webpack aliases (see vue.config.js), so that TypeScript uses these declarations.
 // Only the subset of the API used by the webui is declared here, against pdfjs-dist 6.4.299 (pinned in package.json).
 // On an upgrade, check these declarations, the files copied by vue.config.js, the pdfjsLib global in functions/pdfjs.ts,
-// and the pdf_viewer.css rules overridden in PdfPage.vue.
+// the pdf_viewer.css rules overridden in PdfPage.vue, and the guard on the icons of text annotations in functions/pdfjs.ts
+// (tests/unit/functions/pdfjs-internals.spec.ts fails when the pdf.js code it relies on changes).
 
 declare module 'pdfjs-lib' {
   export const GlobalWorkerOptions: {
