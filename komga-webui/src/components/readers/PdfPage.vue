@@ -6,19 +6,18 @@
 
 <script lang="ts">
 import Vue, {markRaw, PropType} from 'vue'
-import {PageDtoWithUrl} from '@/types/komga-books'
 import {ContinuousScaleType, ScaleType} from '@/types/enum-reader'
 import {loadPdfJs} from '@/functions/pdfjs'
 import {loadPdfPage} from '@/functions/pdf-page-source'
 import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
 import type {PDFPageView} from 'pdfjs-viewer'
 
+// A PDF page drawn by pdf.js while mounted: the readers mount it around the current page, keyed by its url.
 // Emits load with the size of the page at scale 1, and fail when pdf.js cannot draw it: the reader shows the page as an image.
 export default Vue.extend({
   name: 'PdfPage',
   data: () => {
     return {
-      failed: false,
       // size of the page at scale 1, known once loaded
       pageSize: undefined as Size | undefined,
       loadAbort: undefined as AbortController | undefined,
@@ -29,8 +28,13 @@ export default Vue.extend({
     }
   },
   props: {
-    page: {
-      type: Object as PropType<PageDtoWithUrl>,
+    // single page PDF
+    url: {
+      type: String,
+      required: true,
+    },
+    pageNumber: {
+      type: Number,
       required: true,
     },
     fit: {
@@ -46,11 +50,6 @@ export default Vue.extend({
       type: Number,
       required: true,
     },
-    // inactive pages release their canvas and their PDF
-    active: {
-      type: Boolean,
-      default: true,
-    },
     // pages with lower values are loaded first, typically the distance to the current page
     priority: {
       type: Number,
@@ -63,25 +62,14 @@ export default Vue.extend({
     },
   },
   mounted() {
-    if (this.active) this.load()
+    this.load()
   },
   beforeDestroy() {
     this.unload()
   },
   watch: {
-    'page.pdfUrl'() {
-      // the component is reused for another page, for instance when the page layout changes
-      this.unload()
-      this.pageSize = undefined
-      this.failed = false
-      if (this.active) this.load()
-    },
-    active(val) {
-      if (val) this.load()
-      else this.unload()
-    },
     scale(val, old) {
-      // the first scale is applied by load(), and an unloaded page gets the current scale when loaded again
+      // the first scale is applied by load()
       if (val && old && this.pageView) {
         this.pageView.update({scale: val})
         this.draw()
@@ -96,13 +84,12 @@ export default Vue.extend({
   },
   methods: {
     async load() {
-      if (this.loadAbort || this.releasePdfPage || this.failed) return
       const loadAbort = new AbortController()
       this.loadAbort = loadAbort
       try {
         const {lib, createPageView} = await loadPdfJs()
-        const {pdfPage, release} = await loadPdfPage(this.page.pdfUrl!!, () => this.priority, loadAbort.signal)
-        // the page can be unloaded between the end of the loading and this line
+        const {pdfPage, release} = await loadPdfPage(this.url, () => this.priority, loadAbort.signal)
+        // the page can be unmounted between the end of the loading and this line
         if (loadAbort.signal.aborted) {
           release()
           return
@@ -115,7 +102,7 @@ export default Vue.extend({
 
         this.pageView = markRaw(createPageView({
           container: this.$refs.container as HTMLDivElement,
-          id: this.page.number,
+          id: this.pageNumber,
           pdfPage,
           viewport,
           scale: this.scale!!,
@@ -124,7 +111,7 @@ export default Vue.extend({
       } catch (e) {
         if (e?.name !== 'AbortError') this.fail(e)
       } finally {
-        if (this.loadAbort === loadAbort) this.loadAbort = undefined
+        this.loadAbort = undefined
       }
     },
     async draw() {
@@ -132,22 +119,21 @@ export default Vue.extend({
       const pageView = this.pageView
       if (!pageView || pageView.renderingState !== viewer.RenderingStates.INITIAL) return
       try {
-        // a drawing cancelled by a new scale or an unload resolves
+        // a drawing cancelled by a new scale or an unmount resolves
         await pageView.draw()
       } catch (e) {
         if (this.pageView === pageView) this.fail(e)
       }
     },
     fail(e: any) {
-      this.$warn('[PdfPage]', `page:${this.page.number}`, e)
+      this.$warn('[PdfPage]', `page:${this.pageNumber}`, e)
       this.unload()
-      this.failed = true
       this.$emit('fail')
     },
     unload() {
       this.loadAbort?.abort()
       this.loadAbort = undefined
-      // a page view keeps its page and layers even when destroyed, so it is dropped (a page loaded again gets a new one)
+      // a page view keeps its page and layers even when destroyed, so it is dropped
       this.pageView?.destroy()
       this.pageView?.div.remove()
       this.pageView = undefined

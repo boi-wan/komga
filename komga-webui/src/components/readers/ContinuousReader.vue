@@ -13,7 +13,9 @@
         >
           <!--  only the pages around the screen are drawn, the boxes of the others keep their size  -->
           <pdf-page v-if="pdfPageDistance(page.number) <= 2"
-                    :page="page"
+                    :key="page.pdfUrl"
+                    :url="page.pdfUrl"
+                    :page-number="page.number"
                     :fit="scale"
                     :width="availableWidth"
                     :height="$vuetify.breakpoint.height"

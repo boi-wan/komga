@@ -84,6 +84,24 @@ describe('Text selection mode', () => {
 })
 
 describe('PDF pages', () => {
+  const tenPages = Array.from({length: 10}, (_, i) => page(i + 1))
+  const mountedPages = (wrapper: ReturnType<typeof mountReader>) => wrapper.findAll('pdfpage-stub').wrappers.map(p => Number(p.attributes('page-number')))
+
+  test('given PDF pages when reading then only the pages within 2 spreads of the current one are mounted, and none as image', () => {
+    const wrapper = mountReader({pages: tenPages, page: 1})
+
+    expect(mountedPages(wrapper)).toEqual([1, 2, 3])
+    expect(wrapper.findAll('img')).toHaveLength(0)
+  })
+
+  test('given PDF pages when the current page moves away then the pages left behind are unmounted', async () => {
+    const wrapper = mountReader({pages: tenPages, page: 1})
+
+    await wrapper.setProps({page: 8})
+
+    expect(mountedPages(wrapper)).toEqual([6, 7, 8, 9, 10])
+  })
+
   test('given PDF page when pdf.js cannot draw it then it is shown as its server image', async () => {
     const wrapper = mountReader()
 

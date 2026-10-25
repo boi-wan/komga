@@ -61,11 +61,9 @@ function loadedPage() {
   }
 }
 
-const page = (n: number) => ({number: n, url: `/pages/${n}`, pdfUrl: `/pages/${n}/raw`, mediaType: 'application/pdf', size: ''})
-
 function mountPage(props: object = {}) {
   return mount(PdfPage, {
-    propsData: {page: page(1), fit: ScaleType.SCREEN, width: 800, height: 600, ...props},
+    propsData: {url: '/pages/1/raw', pageNumber: 1, fit: ScaleType.SCREEN, width: 800, height: 600, ...props},
     mocks: {$warn: jest.fn()},
   })
 }
@@ -79,7 +77,7 @@ beforeEach(() => {
 })
 
 describe('PdfPage', () => {
-  test('given active page when mounted then its PDF page is loaded, drawn and its size emitted', async () => {
+  test('given page when mounted then its PDF page is loaded, drawn and its size emitted', async () => {
     jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
 
     const wrapper = mountPage()
@@ -90,47 +88,27 @@ describe('PdfPage', () => {
     expect(wrapper.emitted('load')).toEqual([[{width: 816, height: 1056}]])
   })
 
-  test('given inactive page when mounted then nothing is loaded', async () => {
-    mountPage({active: false})
-    await flush()
-
-    expect(loadPdfPage).not.toHaveBeenCalled()
-  })
-
-  test('given drawn page when deactivated then its view is dropped and its page released', async () => {
+  test('given drawn page when unmounted then its view is dropped and its page released', async () => {
     const loaded = loadedPage()
     jest.mocked(loadPdfPage).mockResolvedValue(loaded)
     const wrapper = mountPage()
     await flush()
+    const view = mockViews[0]
 
-    await wrapper.setProps({active: false})
+    wrapper.destroy()
 
-    expect(mockViews[0].destroyed).toBe(true)
-    expect(mockViews[0].div.isConnected).toBe(false)
+    expect(view.destroyed).toBe(true)
+    expect(view.div.isConnected).toBe(false)
     expect(loaded.release).toHaveBeenCalledTimes(1)
   })
 
-  test('given drawn page when its pdfUrl changes then the previous page is released and the new one loaded', async () => {
-    const first = loadedPage()
-    jest.mocked(loadPdfPage).mockResolvedValueOnce(first).mockResolvedValueOnce(loadedPage())
-    const wrapper = mountPage()
-    await flush()
-
-    await wrapper.setProps({page: page(2)})
-    await flush()
-
-    expect(first.release).toHaveBeenCalledTimes(1)
-    expect(jest.mocked(loadPdfPage).mock.calls[1][0]).toEqual('/pages/2/raw')
-    expect(mockViews.map(v => v.destroyed)).toEqual([true, false])
-  })
-
-  test('given page deactivated while loading when the load completes then the page is released and not drawn', async () => {
+  test('given page unmounted while loading when the load completes then the page is released and not drawn', async () => {
     let complete: (value: ReturnType<typeof loadedPage>) => void = () => undefined
     jest.mocked(loadPdfPage).mockReturnValue(new Promise(resolve => complete = resolve))
     const wrapper = mountPage()
     await flush()
 
-    await wrapper.setProps({active: false})
+    wrapper.destroy()
     const loaded = loadedPage()
     complete(loaded)
     await flush()
@@ -147,18 +125,6 @@ describe('PdfPage', () => {
     await flush()
 
     expect(wrapper.emitted('fail')).toHaveLength(1)
-  })
-
-  test('given failed page when activated again then it is not loaded again', async () => {
-    jest.mocked(loadPdfPage).mockRejectedValue(new Error('HTTP 500'))
-    const wrapper = mountPage()
-    await flush()
-
-    await wrapper.setProps({active: false})
-    await wrapper.setProps({active: true})
-    await flush()
-
-    expect(loadPdfPage).toHaveBeenCalledTimes(1)
   })
 
   test('given load aborted when loading then no failure is reported', async () => {

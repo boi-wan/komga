@@ -28,19 +28,21 @@
         <div class="full-height d-flex flex-column justify-center">
           <div :class="`d-flex flex-row${flipDirection ? '-reverse' : ''} justify-center px-0 mx-0`">
             <template v-for="(page, j) in spread">
-              <!--  a PDF page pdf.js cannot draw is shown as an image  -->
-              <pdf-page v-if="page.pdfUrl && !failedPdfPages[page.number]"
-                        :key="`spread${i}-${j}`"
-                        class="pdf-page-fit"
-                        :page="page"
-                        :fit="scale"
-                        :width="$vuetify.breakpoint.width / spread.length"
-                        :height="$vuetify.breakpoint.height"
-                        :active="eagerLoad(i)"
-                        :priority="Math.abs(carouselPage - i)"
-                        :text-selection="textSelection"
-                        @fail="$set(failedPdfPages, page.number, true)"
-              />
+              <!--  PDF pages are drawn around the current spread only; a PDF page pdf.js cannot draw is shown as an image  -->
+              <template v-if="page.pdfUrl && !failedPdfPages[page.number]">
+                <pdf-page v-if="eagerLoad(i)"
+                          :key="page.pdfUrl"
+                          class="pdf-page-fit"
+                          :url="page.pdfUrl"
+                          :page-number="page.number"
+                          :fit="scale"
+                          :width="$vuetify.breakpoint.width / spread.length"
+                          :height="$vuetify.breakpoint.height"
+                          :priority="Math.abs(carouselPage - i)"
+                          :text-selection="textSelection"
+                          @fail="$set(failedPdfPages, page.number, true)"
+                />
+              </template>
               <img v-else
                    :alt="`Page ${page.number}`"
                    :key="`spread${i}-${j}`"
