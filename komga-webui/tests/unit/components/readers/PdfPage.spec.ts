@@ -200,4 +200,18 @@ describe('PdfPage', () => {
     expect(wrapper.find('img').exists()).toBe(false)
     expect(mockViews[0].destroyed).toBe(false)
   })
+
+  test('given drawn page when text selection turns on then it is marked for text selection, without drawing the page again', async () => {
+    jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
+    const wrapper = mountPage()
+    await flush()
+    expect(wrapper.classes()).not.toContain('text-selection')
+
+    await wrapper.setProps({textSelection: true})
+    await flush()
+
+    expect(wrapper.classes()).toContain('text-selection')
+    expect(mockViews).toHaveLength(1)
+    expect(mockViews[0].draws).toEqual(1)
+  })
 })

@@ -166,9 +166,12 @@
       "show_hide_settings": "Show/hide settings menu",
       "show_hide_thumbnails": "Show/hide thumbnails explorer",
       "show_hide_toolbars": "Show/hide toolbars",
+      "text_selection": "Turn text selection on/off",
       "vertical": "Vertical",
       "webtoon": "Webtoon"
     },
+    "text_selection_off": "Text selection off",
+    "text_selection_on": "Text selection on",
     "tooltip_incognito": "Read progress will not be saved"
   },
   "browse_book": {

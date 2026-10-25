@@ -29,6 +29,13 @@
 
           <v-btn
             icon
+            v-if="canSelectText"
+            @click="toggleTextSelection">
+            <v-icon :color="textSelection ? 'secondary' : ''">mdi-cursor-text</v-icon>
+          </v-btn>
+
+          <v-btn
+            icon
             :disabled="!screenfull.isEnabled"
             @click="screenfull.isFullscreen ? screenfull.exit() : enterFullscreen()">
             <v-icon>{{ fullscreenIcon }}</v-icon>
@@ -130,6 +137,7 @@
         :scale="continuousScale"
         :sidePadding="sidePadding"
         :page-margin="pageMargin"
+        :text-selection="textSelection"
         @menu="toggleToolbars()"
         @jump-previous="jumpToPrevious()"
         @jump-next="jumpToNext()"
@@ -144,6 +152,7 @@
         :scale="scale"
         :animations="animations"
         :swipe="swipe"
+        :text-selection="textSelection"
         @menu="toggleToolbars()"
         @jump-previous="jumpToPrevious()"
         @jump-next="jumpToNext()"
@@ -338,7 +347,7 @@ import {
   shortcutsSettingsPaged,
   shortcutsVertical,
 } from '@/functions/shortcuts/paged-reader'
-import {shortcutsMenus, shortcutsSettings} from '@/functions/shortcuts/bookreader'
+import {shortcutsMenus, shortcutsSettings, shortcutsTextSelection} from '@/functions/shortcuts/bookreader'
 import {shortcutsAll} from '@/functions/shortcuts/reader'
 import {shortcutsSettingsContinuous} from '@/functions/shortcuts/continuous-reader'
 import {BookDto, PageDto, PageDtoWithUrl} from '@/types/komga-books'
@@ -387,6 +396,8 @@ export default Vue.extend({
       showSettings: false,
       showHelp: false,
       goToPage: 1,
+      // the clicks select the text of the PDF pages instead of turning pages
+      textSelection: false,
       settings: {
         pageLayout: PagedReaderLayout.SINGLE_PAGE,
         swipe: false,
@@ -447,7 +458,7 @@ export default Vue.extend({
     checkImageSupport(ImageFeature.AVIF, (isSupported) => {
       if (isSupported) this.supportedMediaTypes.push('image/avif')
     })
-    this.shortcuts = this.$_.keyBy([...shortcutsSettings, ...shortcutsSettingsPaged, ...shortcutsSettingsContinuous, ...shortcutsMenus, ...shortcutsAll], x => x.key)
+    this.shortcuts = this.$_.keyBy([...shortcutsSettings, ...shortcutsSettingsPaged, ...shortcutsSettingsContinuous, ...shortcutsTextSelection, ...shortcutsMenus, ...shortcutsAll], x => x.key)
     window.addEventListener('keydown', this.keyPressed)
     if (screenfull.isEnabled) screenfull.on('change', this.fullscreenChanged)
   },
@@ -544,6 +555,7 @@ export default Vue.extend({
       } else {
         settings.push(...shortcutsSettingsPaged)
       }
+      if (this.canSelectText) settings.push(...shortcutsTextSelection)
       return {
         [this.$t('bookreader.shortcuts.reader_navigation').toString()]: nav,
         [this.$t('bookreader.shortcuts.settings').toString()]: settings,
@@ -555,6 +567,10 @@ export default Vue.extend({
     },
     currentPage(): PageDtoWithUrl {
       return this.pages[this.page - 1]
+    },
+    // pages drawn by pdf.js have their text
+    canSelectText(): boolean {
+      return this.pages.some(p => p.pdfUrl)
     },
 
     animations: {
@@ -709,6 +725,8 @@ export default Vue.extend({
       if (this.book.media.mediaProfile === MediaProfile.PDF)
         pageDtos.forEach((p: any) => p['pdfUrl'] = bookPageRawUrl(bookId, p.number))
       this.pages = pageDtos as PageDtoWithUrl[]
+      // each book opens in read mode
+      this.textSelection = false
 
       this.$debug('[setup]', `pages count:${this.pagesCount}`, 'read progress:', this.book.readProgress)
       if (page && page >= 1 && page <= this.pagesCount) {
@@ -876,6 +894,11 @@ export default Vue.extend({
     },
     toggleHelp() {
       this.showHelp = !this.showHelp
+    },
+    toggleTextSelection() {
+      if (!this.canSelectText) return
+      this.textSelection = !this.textSelection
+      this.sendNotification(`${this.$t(this.textSelection ? 'bookreader.text_selection_on' : 'bookreader.text_selection_off')}`)
     },
     closeDialog() {
       if (this.showExplorer) {

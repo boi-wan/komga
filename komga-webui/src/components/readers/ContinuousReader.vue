@@ -18,6 +18,7 @@
                     :width="availableWidth"
                     :height="$vuetify.breakpoint.height"
                     :priority="pdfPageDistance(page.number)"
+                    :text-selection="textSelection"
                     @load="size => onPdfPageLoad(page, size)"
           />
         </div>
@@ -34,23 +35,26 @@
       </template>
     </div>
 
-    <!--  clickable zone: top  -->
-    <div @click="prev()"
-         class="top-quarter"
-         style="z-index: 1;"
-    />
+    <!--  no clickable zones in text selection mode: the clicks go to the text of the PDF pages  -->
+    <template v-if="!textSelection">
+      <!--  clickable zone: top  -->
+      <div @click="prev()"
+           class="top-quarter"
+           style="z-index: 1;"
+      />
 
-    <!--  clickable zone: bottom  -->
-    <div @click="next()"
-         class="bottom-quarter"
-         style="z-index: 1;"
-    />
+      <!--  clickable zone: bottom  -->
+      <div @click="next()"
+           class="bottom-quarter"
+           style="z-index: 1;"
+      />
 
-    <!--  clickable zone: menu  -->
-    <div @click="centerClick()"
-         class="center-vertical"
-         style="z-index: 1;"
-    />
+      <!--  clickable zone: menu  -->
+      <div @click="centerClick()"
+           class="center-vertical"
+           style="z-index: 1;"
+      />
+    </template>
   </div>
 </template>
 
@@ -106,6 +110,10 @@ export default Vue.extend({
     },
     pageMargin: {
       type: Number,
+      required: true,
+    },
+    textSelection: {
+      type: Boolean,
       required: true,
     },
   },

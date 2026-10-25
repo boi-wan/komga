@@ -1,5 +1,5 @@
 <template>
-  <div class="pdf-page">
+  <div class="pdf-page" :class="{'text-selection': textSelection}">
     <img v-if="failed"
          :src="page.url"
          :alt="`Page ${page.number}`"
@@ -65,6 +65,11 @@ export default Vue.extend({
     priority: {
       type: Number,
       default: 0,
+    },
+    // the text and the links of the page take the clicks, instead of the reader
+    textSelection: {
+      type: Boolean,
+      default: false,
     },
   },
   mounted() {
@@ -182,5 +187,13 @@ export default Vue.extend({
    while Komga applies its own theme */
 :root {
   color-scheme: normal;
+}
+
+/* read mode: like an image, the page cannot be selected and lets the clicks through to the reader */
+.pdf-page:not(.text-selection) .textLayer,
+.pdf-page:not(.text-selection) .textLayer *,
+.pdf-page:not(.text-selection) .annotationLayer * {
+  pointer-events: none;
+  user-select: none;
 }
 </style>
