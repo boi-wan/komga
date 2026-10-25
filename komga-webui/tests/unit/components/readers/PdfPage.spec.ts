@@ -1,6 +1,6 @@
 import {mount} from '@vue/test-utils'
 import PdfPage from '@/components/readers/PdfPage.vue'
-import {loadPdfPage} from '@/functions/pdf-page-source'
+import {drawPdfPage, loadPdfPage} from '@/functions/pdf-page-source'
 import {ScaleType} from '@/types/enum-reader'
 
 // fake page views, recording what pdf.js would draw
@@ -52,7 +52,7 @@ jest.mock('@/functions/pdfjs', () => {
     }),
   }
 })
-jest.mock('@/functions/pdf-page-source', () => ({loadPdfPage: jest.fn()}))
+jest.mock('@/functions/pdf-page-source', () => ({loadPdfPage: jest.fn(), drawPdfPage: jest.fn()}))
 
 // a US Letter page, with the release of its document
 function loadedPage() {
@@ -76,6 +76,8 @@ beforeEach(() => {
   mockDraw.error = undefined
   mockPdfJs.error = undefined
   jest.mocked(loadPdfPage).mockReset()
+  // drawn right away, unless a test makes the pages wait for their turn
+  jest.mocked(drawPdfPage).mockReset().mockImplementation(draw => draw())
 })
 
 describe('PdfPage', () => {
@@ -172,6 +174,32 @@ describe('PdfPage', () => {
 
     expect(wrapper.emitted('fail')).toEqual([[false]])
     expect(loaded.release).toHaveBeenCalledTimes(1)
+  })
+
+  test('given page waiting for its turn to be drawn when unmounted then its drawing is dropped', async () => {
+    jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
+    jest.mocked(drawPdfPage).mockImplementation(() => new Promise(() => undefined))
+    const wrapper = mountPage()
+    await flush()
+    const signal = jest.mocked(drawPdfPage).mock.calls[0][2]
+
+    wrapper.destroy()
+
+    expect(signal.aborted).toBe(true)
+  })
+
+  test('given page waiting for its turn to be drawn when the scale changes then it waits to be drawn at the new scale only', async () => {
+    jest.mocked(loadPdfPage).mockResolvedValue(loadedPage())
+    jest.mocked(drawPdfPage).mockImplementation(() => new Promise(() => undefined))
+    const wrapper = mountPage()
+    await flush()
+
+    await wrapper.setProps({height: 300})
+    await flush()
+
+    const signals = jest.mocked(drawPdfPage).mock.calls.map(call => call[2].aborted)
+    expect(signals).toEqual([true, false])
+    expect(mockViews[0].options.scale).toBeCloseTo(300 / 1056)
   })
 
   test('given drawn page when text selection turns on then it is marked for text selection, without drawing the page again', async () => {

@@ -199,3 +199,30 @@ describe('Text annotations', () => {
     expect(await pdfPage.getAnnotations()).toEqual([{annotationType: 1, name: 'Note'}, {annotationType: 1, name: 'Note'}, link])
   })
 })
+
+describe('Drawing', () => {
+  test('given pages drawn together when their turn comes then they are drawn one at a time, the closest first', async () => {
+    const started: number[] = []
+    const done: (() => void)[] = []
+    const draw = (page: number) => source.drawPdfPage(() => new Promise<void>(resolve => {
+      started.push(page)
+      done.push(resolve)
+    }), () => page, new AbortController().signal)
+
+    const drawings = [draw(2), draw(0), draw(1)]
+    await Promise.resolve()
+    expect(started).toEqual([0])
+
+    done[0]()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(started).toEqual([0, 1])
+
+    done[1]()
+    await Promise.resolve()
+    await Promise.resolve()
+    done[2]()
+    await Promise.all(drawings)
+    expect(started).toEqual([0, 1, 2])
+  })
+})

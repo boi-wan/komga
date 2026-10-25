@@ -8,7 +8,7 @@
 import Vue, {markRaw, PropType} from 'vue'
 import {ContinuousScaleType, ScaleType} from '@/types/enum-reader'
 import {loadPdfJs, PdfJs} from '@/functions/pdfjs'
-import {loadPdfPage} from '@/functions/pdf-page-source'
+import {drawPdfPage, loadPdfPage} from '@/functions/pdf-page-source'
 import {pdfPageScale, Size} from '@/functions/pdf-page-scale'
 import type {PDFPageView} from 'pdfjs-viewer'
 
@@ -22,6 +22,8 @@ export default Vue.extend({
       // size of the page at scale 1, known once loaded
       pageSize: undefined as Size | undefined,
       loadAbort: undefined as AbortController | undefined,
+      // drawing waiting for its turn
+      drawAbort: undefined as AbortController | undefined,
       // releases the loaded page and its document
       releasePdfPage: undefined as (() => void) | undefined,
       // pdf.js objects are marked raw, so that Vue does not observe them
@@ -51,7 +53,7 @@ export default Vue.extend({
       type: Number,
       required: true,
     },
-    // pages with lower values are loaded first, typically the distance to the current page
+    // pages with lower values are loaded and drawn first, typically the distance to the current page
     priority: {
       type: Number,
       default: 0,
@@ -126,11 +128,17 @@ export default Vue.extend({
       const {viewer} = await loadPdfJs()
       const pageView = this.pageView
       if (!pageView || pageView.renderingState !== viewer.RenderingStates.INITIAL) return
+      // a drawing still waiting for its turn is replaced by this one, at the current scale
+      this.drawAbort?.abort()
+      const drawAbort = new AbortController()
+      this.drawAbort = drawAbort
       try {
         // a drawing cancelled by a new scale or an unmount resolves
-        await pageView.draw()
+        await drawPdfPage(() => pageView.draw(), () => this.priority, drawAbort.signal)
       } catch (e) {
-        if (this.pageView === pageView) this.fail(e)
+        if (e?.name !== 'AbortError' && this.pageView === pageView) this.fail(e)
+      } finally {
+        if (this.drawAbort === drawAbort) this.drawAbort = undefined
       }
     },
     fail(e: any, everyPage = false) {
@@ -141,6 +149,8 @@ export default Vue.extend({
     unload() {
       this.loadAbort?.abort()
       this.loadAbort = undefined
+      this.drawAbort?.abort()
+      this.drawAbort = undefined
       // a page view keeps its page and layers even when destroyed, so it is dropped
       this.pageView?.destroy()
       this.pageView?.div.remove()

@@ -15,6 +15,9 @@ export const MAX_PDF_PAGE_BYTES = 16 * 1024 * 1024
 
 const queue = new LoadQueue(2)
 
+// pdf.js draws a page in slices, one per frame: one page at a time, the closest first, instead of all the pages slowed down together
+const drawQueue = new LoadQueue(1)
+
 // icons of the text annotations, copied from pdf.js by vue.config.js
 const TEXT_ANNOTATION_ICONS = ['check', 'comment', 'help', 'insert', 'key', 'newparagraph', 'noicon', 'note', 'paragraph']
 
@@ -107,4 +110,10 @@ export function loadPdfPage(url: string, priority: () => number, signal: AbortSi
       throw e
     }
   }, priority, signal)
+}
+
+// Draw a page when its turn comes. Resolves once drawn, or once its drawing is cancelled (new scale, unmount).
+// priority: lower values are drawn first, like the pages loaded
+export function drawPdfPage(draw: () => Promise<void>, priority: () => number, signal: AbortSignal): Promise<void> {
+  return drawQueue.run(draw, priority, signal)
 }
