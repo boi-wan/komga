@@ -36,7 +36,7 @@ Komga is a media server for your comics, mangas, BDs, magazines and eBooks.
 
 > [!IMPORTANT]
 > **Upstream Contribution Policy & Fork Status**  
-> Upstream Komga explicitly does not accept AI-generated or AI-assisted pull requests. Because this implementation was developed with LLM pair-programming assistance (architected and directed by a Senior Software Engineer with 12+ years of industry experience), this feature is maintained exclusively as an independent downstream fork out of full respect for the upstream maintainer's project guidelines.
+> Upstream Komga explicitly does not accept AI-generated or AI-assisted pull requests. Because this implementation was developed with LLM pair-programming assistance (architected and directed by a Senior Software Engineer with 12+ years of industry experience), and out of full respect for the upstream maintainer's project guidelines... I created this fork.
 
 #### Chat on [Discord](https://discord.gg/TdRpkDu)
 
