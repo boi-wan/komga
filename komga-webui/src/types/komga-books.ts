@@ -52,6 +52,8 @@ export interface PageDtoWithUrl {
   sizeBytes?: number,
   size: string,
   url: string,
+  // single page PDF, rendered in the browser instead of url
+  pdfUrl?: string,
 }
 
 export interface BookMetadataDto {
