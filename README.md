@@ -10,6 +10,34 @@
 
 Komga is a media server for your comics, mangas, BDs, magazines and eBooks.
 
+> [!NOTE]
+> ### 📖 Why This Fork? (Native PDF.js Reader)
+> Upstream Komga rasterizes PDF pages on the server into static PNG/JPEG images. This fork introduces **client-side vector rendering via Mozilla's PDF.js** directly inside the Divina reader:
+> 
+> * **Vector Clarity**: Crisp text and illustrations at any zoom level without pixelation.
+> * **Text Selection & Copy**: Native text layer support allowing you to highlight, search, and copy text.
+> * **Zero Server Overhead**: Eliminates server-side CPU and RAM spikes during PDF reading.
+> * **Reading Modes**: Fully supported in both paged and continuous (webtoon vertical scroll) modes.
+> * **Image Fallback Toggle**: User setting to switch back to server-rendered images for manga or scanned visual comics.
+>
+> #### Docker Image (Multi-Arch `amd64` / `arm64`)
+> ```yaml
+> services:
+>   komga:
+>     image: ghcr.io/boi-wan/komga:1.29.2-pdfjs.1  # or ghcr.io/boi-wan/komga:pdfjs-latest
+>     container_name: komga
+>     volumes:
+>       - /path/to/config:/config
+>       - /path/to/data:/data
+>     ports:
+>       - 25600:25600
+>     restart: unless-stopped
+> ```
+
+> [!IMPORTANT]
+> **Upstream Contribution Policy & Fork Status**  
+> Upstream Komga explicitly does not accept AI-generated or AI-assisted pull requests. Because this implementation was developed with LLM pair-programming assistance (architected and directed by a Senior Software Engineer with 12+ years of industry experience), and out of full respect for the upstream maintainer's project guidelines... I created this fork.
+
 #### Chat on [Discord](https://discord.gg/TdRpkDu)
 
 ## Features
