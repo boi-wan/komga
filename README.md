@@ -24,7 +24,7 @@ Komga is a media server for your comics, mangas, BDs, magazines and eBooks.
 > ```yaml
 > services:
 >   komga:
->     image: ghcr.io/boi-wan/komga:1.29.2-pdfjs.1  # or ghcr.io/boi-wan/komga:pdfjs-latest
+>     image: ghcr.io/boi-wan/komga:1.30.2-pdfjs.1  # or ghcr.io/boi-wan/komga:pdfjs-latest
 >     container_name: komga
 >     volumes:
 >       - /path/to/config:/config
