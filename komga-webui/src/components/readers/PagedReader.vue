@@ -1,10 +1,10 @@
 <template>
   <div
     v-touch="{
-               left: () => {if(swipe) {turnRight()}},
-               right: () => {if(swipe) {turnLeft()}},
-               up: () => {if(swipe) {verticalNext()}},
-               down: () => {if(swipe) {verticalPrev()}}
+               left: () => {if(swipeEnabled) {turnRight()}},
+               right: () => {if(swipeEnabled) {turnLeft()}},
+               up: () => {if(swipeEnabled) {verticalNext()}},
+               down: () => {if(swipeEnabled) {verticalPrev()}}
              }"
   >
     <v-carousel v-model="carouselPage"
@@ -27,51 +27,71 @@
       >
         <div class="full-height d-flex flex-column justify-center">
           <div :class="`d-flex flex-row${flipDirection ? '-reverse' : ''} justify-center px-0 mx-0`">
-            <img v-for="(page, j) in spread"
-                 :alt="`Page ${page.number}`"
-                 :key="`spread${i}-${j}`"
-                 :src="page.url"
-                 :class="imgClass(spread)"
-                 class="img-fit-all"
-            />
+            <template v-for="(page, j) in spread">
+              <!--  PDF pages are drawn around the current spread only  -->
+              <template v-if="page.pdfUrl">
+                <pdf-page v-if="eagerLoad(i)"
+                          :key="page.pdfUrl"
+                          class="pdf-page-fit"
+                          :url="page.pdfUrl"
+                          :page-number="page.number"
+                          :fit="scale"
+                          :width="$vuetify.breakpoint.width / spread.length"
+                          :height="$vuetify.breakpoint.height"
+                          :priority="Math.abs(carouselPage - i)"
+                          :text-selection="textSelection"
+                          @fail="everyPage => $emit('pdf-page-fail', page.number, everyPage)"
+                />
+              </template>
+              <img v-else
+                   :alt="`Page ${page.number}`"
+                   :key="`spread${i}-${j}`"
+                   :src="page.url"
+                   :class="imgClass(spread)"
+                   class="img-fit-all"
+              />
+            </template>
           </div>
         </div>
       </v-carousel-item>
     </v-carousel>
 
-    <!--  clickable zone: left  -->
-    <div v-if="!vertical"
-         @click="turnLeft()"
-         class="left-quarter"
-         style="z-index: 1;"
-    />
+    <!--  no clickable zones in text selection mode: the clicks go to the text of the PDF pages  -->
+    <template v-if="!textSelection">
+      <!--  clickable zone: left  -->
+      <div v-if="!vertical"
+           @click="turnLeft()"
+           class="left-quarter"
+           style="z-index: 1;"
+      />
 
-    <!--  clickable zone: right  -->
-    <div v-if="!vertical"
-         @click="turnRight()"
-         class="right-quarter"
-         style="z-index: 1;"
-    />
+      <!--  clickable zone: right  -->
+      <div v-if="!vertical"
+           @click="turnRight()"
+           class="right-quarter"
+           style="z-index: 1;"
+      />
 
-    <!--  clickable zone: top  -->
-    <div v-if="vertical"
-         @click="verticalPrev()"
-         class="top-quarter"
-         style="z-index: 1;"
-    />
+      <!--  clickable zone: top  -->
+      <div v-if="vertical"
+           @click="verticalPrev()"
+           class="top-quarter"
+           style="z-index: 1;"
+      />
 
-    <!--  clickable zone: bottom  -->
-    <div v-if="vertical"
-         @click="verticalNext()"
-         class="bottom-quarter"
-         style="z-index: 1;"
-    />
+      <!--  clickable zone: bottom  -->
+      <div v-if="vertical"
+           @click="verticalNext()"
+           class="bottom-quarter"
+           style="z-index: 1;"
+      />
 
-    <!--  clickable zone: menu  -->
-    <div @click="centerClick()"
-         :class="`${vertical ? 'center-vertical' : 'center-horizontal'}`"
-         style="z-index: 1;"
-    />
+      <!--  clickable zone: menu  -->
+      <div @click="centerClick()"
+           :class="`${vertical ? 'center-vertical' : 'center-horizontal'}`"
+           style="z-index: 1;"
+      />
+    </template>
   </div>
 </template>
 
@@ -82,9 +102,13 @@ import {PagedReaderLayout, ScaleType} from '@/types/enum-reader'
 import {shortcutsLTR, shortcutsRTL, shortcutsVertical} from '@/functions/shortcuts/paged-reader'
 import {PageDtoWithUrl} from '@/types/komga-books'
 import {buildSpreads} from '@/functions/book-spreads'
+import {asyncPdfPage} from '@/components/readers/async-pdf-page'
 
 export default Vue.extend({
   name: 'PagedReader',
+  components: {
+    PdfPage: asyncPdfPage,
+  },
   data: function () {
     return {
       logger: 'PagedReader',
@@ -119,6 +143,10 @@ export default Vue.extend({
     },
     scale: {
       type: String as () => ScaleType,
+      required: true,
+    },
+    textSelection: {
+      type: Boolean,
       required: true,
     },
   },
@@ -193,6 +221,10 @@ export default Vue.extend({
     },
     canNext(): boolean {
       return this.currentSlide < this.slidesCount
+    },
+    // swiping would turn the page while selecting text
+    swipeEnabled(): boolean {
+      return this.swipe && !this.textSelection
     },
     isDoublePages(): boolean {
       return this.pageLayout === PagedReaderLayout.DOUBLE_PAGES || this.pageLayout === PagedReaderLayout.DOUBLE_NO_COVER
@@ -371,6 +403,13 @@ export default Vue.extend({
 .img-double-fit-screen {
   max-width: 50vw;
   height: 100vh;
+}
+
+/* a page smaller than the screen is centered vertically, like the images */
+.pdf-page-fit {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
 }
 
 .pre-render {

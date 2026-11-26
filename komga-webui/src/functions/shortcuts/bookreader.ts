@@ -22,6 +22,13 @@ export const shortcutsSettings = [
     , 'f'),
 ]
 
+// PDF books only
+export const shortcutsTextSelection = [
+  new Shortcut('bookreader.shortcuts.text_selection',
+    (ctx: any) => ctx.toggleTextSelection()
+    , 'x'),
+]
+
 export const shortcutsMenus = [
   new Shortcut('bookreader.shortcuts.show_hide_toolbars',
     (ctx: any) => ctx.toggleToolbars()

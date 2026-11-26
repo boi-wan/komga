@@ -1,0 +1,13 @@
+import {PageDtoWithUrl} from '@/types/komga-books'
+
+// Pages given to the readers: those with a pdfUrl are drawn by pdf.js. When the rendering of PDF pages is off, every page
+// is shown as its server image, and so are the PDF pages pdf.js could not draw.
+export function toReaderPages(pages: PageDtoWithUrl[], pdfClientRendering: boolean, failedPdfPages: Record<number, boolean> = {}): PageDtoWithUrl[] {
+  if (pdfClientRendering && Object.keys(failedPdfPages).length === 0) return pages
+  return pages.map(p => p.pdfUrl && (!pdfClientRendering || failedPdfPages[p.number]) ? {...p, pdfUrl: undefined} : p)
+}
+
+// Whether two lists of pages show the same book, e.g. before and after the rendering of PDF pages is turned on or off.
+export function sameBookPages(a: PageDtoWithUrl[] | undefined, b: PageDtoWithUrl[] | undefined): boolean {
+  return !!a && !!b && a.length === b.length && a.every((page, i) => page.url === b[i].url)
+}

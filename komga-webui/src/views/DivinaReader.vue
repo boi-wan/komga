@@ -29,6 +29,13 @@
 
           <v-btn
             icon
+            v-if="canSelectText"
+            @click="toggleTextSelection">
+            <v-icon :color="textSelection ? 'secondary' : ''">mdi-cursor-text</v-icon>
+          </v-btn>
+
+          <v-btn
+            icon
             :disabled="!screenfull.isEnabled"
             @click="screenfull.isFullscreen ? screenfull.exit() : enterFullscreen()">
             <v-icon>{{ fullscreenIcon }}</v-icon>
@@ -124,12 +131,14 @@
     <div class="full-height">
       <continuous-reader
         v-if="continuousReader"
-        :pages="pages"
+        :pages="readerPages"
         :page.sync="page"
         :animations="animations"
         :scale="continuousScale"
         :sidePadding="sidePadding"
         :page-margin="pageMargin"
+        :text-selection="textSelection"
+        @pdf-page-fail="onPdfPageFail"
         @menu="toggleToolbars()"
         @jump-previous="jumpToPrevious()"
         @jump-next="jumpToNext()"
@@ -137,13 +146,15 @@
 
       <paged-reader
         v-else
-        :pages="pages"
+        :pages="readerPages"
         :page.sync="page"
         :reading-direction="readingDirection"
         :page-layout="pageLayout"
         :scale="scale"
         :animations="animations"
         :swipe="swipe"
+        :text-selection="textSelection"
+        @pdf-page-fail="onPdfPageFail"
         @menu="toggleToolbars()"
         @jump-previous="jumpToPrevious()"
         @jump-next="jumpToNext()"
@@ -195,6 +206,10 @@
             <v-list-item>
               <settings-switch v-model="alwaysFullscreen" :label="$t('bookreader.settings.always_fullscreen')"
                                :disabled="!screenfull.isEnabled"/>
+            </v-list-item>
+
+            <v-list-item v-if="pdfBook">
+              <settings-switch v-model="pdfClientRendering" :label="$t('bookreader.settings.pdf_client_rendering')"/>
             </v-list-item>
 
             <v-subheader class="font-weight-black text-h6">{{ $t('bookreader.settings.display') }}</v-subheader>
@@ -323,10 +338,10 @@ import ThumbnailExplorerDialog from '@/components/dialogs/ThumbnailExplorerDialo
 import ShortcutHelpDialog from '@/components/dialogs/ShortcutHelpDialog.vue'
 import {getBookTitleCompact} from '@/functions/book-title'
 import {checkImageSupport, ImageFeature} from '@/functions/check-image'
-import {bookPageUrl} from '@/functions/urls'
+import {bookPageRawUrl, bookPageUrl} from '@/functions/urls'
 import {getFileFromUrl} from '@/functions/file'
 import {resizeImageFile} from '@/functions/resize-image'
-import {ReadingDirection} from '@/types/enum-books'
+import {MediaProfile, ReadingDirection} from '@/types/enum-books'
 import Vue from 'vue'
 import {Location} from 'vue-router'
 import PagedReader from '@/components/readers/PagedReader.vue'
@@ -338,7 +353,7 @@ import {
   shortcutsSettingsPaged,
   shortcutsVertical,
 } from '@/functions/shortcuts/paged-reader'
-import {shortcutsMenus, shortcutsSettings} from '@/functions/shortcuts/bookreader'
+import {shortcutsMenus, shortcutsSettings, shortcutsTextSelection} from '@/functions/shortcuts/bookreader'
 import {shortcutsAll} from '@/functions/shortcuts/reader'
 import {shortcutsSettingsContinuous} from '@/functions/shortcuts/continuous-reader'
 import {BookDto, PageDto, PageDtoWithUrl} from '@/types/komga-books'
@@ -348,6 +363,7 @@ import jsFileDownloader from 'js-file-downloader'
 import screenfull from 'screenfull'
 import {ItemTypes} from '@/types/items'
 import {getBookReadRouteFromMedia} from '@/functions/book-format'
+import {toReaderPages} from '@/functions/reader-pages'
 
 export default Vue.extend({
   name: 'DivinaReader',
@@ -387,10 +403,17 @@ export default Vue.extend({
       showSettings: false,
       showHelp: false,
       goToPage: 1,
+      // the clicks select the text of the PDF pages instead of turning pages
+      textSelection: false,
+      // PDF pages of the book that pdf.js could not draw, shown as images
+      failedPdfPages: {} as Record<number, boolean>,
+      // pdf.js itself could not be loaded for the book: every page is shown as an image
+      pdfJsUnavailable: false,
       settings: {
         pageLayout: PagedReaderLayout.SINGLE_PAGE,
         swipe: false,
         alwaysFullscreen: false,
+        pdfClientRendering: true,
         animations: true,
         scale: ScaleType.SCREEN,
         continuousScale: ContinuousScaleType.WIDTH,
@@ -447,7 +470,7 @@ export default Vue.extend({
     checkImageSupport(ImageFeature.AVIF, (isSupported) => {
       if (isSupported) this.supportedMediaTypes.push('image/avif')
     })
-    this.shortcuts = this.$_.keyBy([...shortcutsSettings, ...shortcutsSettingsPaged, ...shortcutsSettingsContinuous, ...shortcutsMenus, ...shortcutsAll], x => x.key)
+    this.shortcuts = this.$_.keyBy([...shortcutsSettings, ...shortcutsSettingsPaged, ...shortcutsSettingsContinuous, ...shortcutsTextSelection, ...shortcutsMenus, ...shortcutsAll], x => x.key)
     window.addEventListener('keydown', this.keyPressed)
     if (screenfull.isEnabled) screenfull.on('change', this.fullscreenChanged)
   },
@@ -461,6 +484,7 @@ export default Vue.extend({
     this.pageLayout = this.$store.state.persistedState.webreader.paged.pageLayout
     this.swipe = this.$store.state.persistedState.webreader.swipe
     this.alwaysFullscreen = this.$store.state.persistedState.webreader.alwaysFullscreen
+    this.pdfClientRendering = this.$store.state.persistedState.webreader.pdfClientRendering
     this.scale = this.$store.state.persistedState.webreader.paged.scale
     this.continuousScale = this.$store.state.persistedState.webreader.continuous.scale
     this.sidePadding = this.$store.state.persistedState.webreader.continuous.padding
@@ -496,6 +520,10 @@ export default Vue.extend({
     next()
   },
   watch: {
+    // text selection ends when no page has a text layer anymore, e.g. when the rendering of PDF pages is turned off
+    canSelectText(val) {
+      if (!val) this.textSelection = false
+    },
     page: {
       handler(val, old) {
         if (val) {
@@ -544,6 +572,7 @@ export default Vue.extend({
       } else {
         settings.push(...shortcutsSettingsPaged)
       }
+      if (this.canSelectText) settings.push(...shortcutsTextSelection)
       return {
         [this.$t('bookreader.shortcuts.reader_navigation').toString()]: nav,
         [this.$t('bookreader.shortcuts.settings').toString()]: settings,
@@ -555,6 +584,16 @@ export default Vue.extend({
     },
     currentPage(): PageDtoWithUrl {
       return this.pages[this.page - 1]
+    },
+    pdfBook(): boolean {
+      return this.book.media?.mediaProfile === MediaProfile.PDF
+    },
+    readerPages(): PageDtoWithUrl[] {
+      return toReaderPages(this.pages, this.pdfClientRendering && !this.pdfJsUnavailable, this.failedPdfPages)
+    },
+    // pages drawn by pdf.js have their text
+    canSelectText(): boolean {
+      return this.readerPages.some(p => p.pdfUrl)
     },
 
     animations: {
@@ -652,6 +691,15 @@ export default Vue.extend({
         this.$store.commit('setWebreaderSwipe', swipe)
       },
     },
+    pdfClientRendering: {
+      get: function (): boolean {
+        return this.settings.pdfClientRendering
+      },
+      set: function (pdfClientRendering: boolean): void {
+        this.settings.pdfClientRendering = pdfClientRendering
+        this.$store.commit('setWebreaderPdfClientRendering', pdfClientRendering)
+      },
+    },
     alwaysFullscreen: {
       get: function (): boolean {
         return this.settings.alwaysFullscreen
@@ -706,6 +754,12 @@ export default Vue.extend({
 
       const pageDtos = (await this.$komgaBooks.getBookPages(bookId))
       pageDtos.forEach((p: any) => p['url'] = this.getPageUrl(p))
+      if (this.pdfBook)
+        pageDtos.forEach((p: any) => p['pdfUrl'] = bookPageRawUrl(bookId, p.number))
+      // each book opens in read mode, and pdf.js tries all its pages
+      this.textSelection = false
+      this.failedPdfPages = {}
+      this.pdfJsUnavailable = false
       this.pages = pageDtos as PageDtoWithUrl[]
 
       this.$debug('[setup]', `pages count:${this.pagesCount}`, 'read progress:', this.book.readProgress)
@@ -874,6 +928,15 @@ export default Vue.extend({
     },
     toggleHelp() {
       this.showHelp = !this.showHelp
+    },
+    onPdfPageFail(page: number, everyPage: boolean) {
+      if (everyPage) this.pdfJsUnavailable = true
+      else this.$set(this.failedPdfPages, page, true)
+    },
+    toggleTextSelection() {
+      if (!this.canSelectText) return
+      this.textSelection = !this.textSelection
+      this.sendNotification(`${this.$t(this.textSelection ? 'bookreader.text_selection_on' : 'bookreader.text_selection_off')}`)
     },
     closeDialog() {
       if (this.showExplorer) {
